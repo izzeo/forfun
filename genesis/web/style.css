@@ -67,3 +67,5 @@ a.who { color: var(--accent); cursor: pointer; text-decoration: none; }
   #clock { min-width: 0; }
   #layers { font-size: 11px; }
 }
+/* fixed chart heights: never derived from the canvas' own (resized) attributes */
+#ch-pop { height: 110px; } #ch-traits { height: 120px; } #ch-species { height: 90px; }
