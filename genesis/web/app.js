@@ -272,7 +272,9 @@ function bars(el, obj, opts = {}) {
 }
 function lineChart(cv, series, colors, opts = {}) {
   const ctx = cv.getContext('2d');
-  const w = (cv.width = cv.clientWidth * 2), h = (cv.height = (cv.getAttribute('height') | 0) * 2);
+  if (!cv.dataset.h) cv.dataset.h = cv.getAttribute('height') || 100;  // CSS height in px, fixed once
+  cv.style.height = cv.dataset.h + 'px';
+  const w = (cv.width = cv.clientWidth * 2), h = (cv.height = cv.dataset.h * 2);
   ctx.clearRect(0, 0, w, h);
   const all = series.flat().filter((v) => Number.isFinite(v));
   if (!all.length) return;
