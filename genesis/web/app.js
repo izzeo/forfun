@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from '/static/vendor/OrbitControls.js';
+import { PixelView } from '/static/pixel.js?v=6';
 
 const $ = (s) => document.querySelector(s);
 const api = (p, opt) => fetch(p, opt).then((r) => r.json());
@@ -189,7 +190,22 @@ function paintAgents() {
   }
 }
 
+let viewMode = 'pixel';
+const pv = new PixelView(document.querySelector('#pixel'), {
+  onSelect: (id) => selectAgent(id),
+  onMicro: (x, y) => openMicro(x, y),
+  isMicro: () => document.querySelector('#micro-mode').checked,
+  onFollowChange: (v) => { document.querySelector('#follow').checked = v; },
+  onHover: (a, x, y) => {
+    const tip = document.querySelector('#tooltip');
+    if (!a) { tip.style.display = 'none'; return; }
+    tip.style.display = 'block'; tip.style.left = x + 14 + 'px'; tip.style.top = y + 10 + 'px';
+    tip.textContent = `#${a[0]} · ${meta.actions[a[5]]} · species ${a[3]}${a[4] >= 0 ? ' · group ' + a[4] : ''}`;
+  },
+});
+
 function resize() {
+  pv.resize();
   const r = canvas.parentElement.getBoundingClientRect();
   renderer.setSize(r.width, r.height, false);
   camera.aspect = r.width / r.height;
@@ -199,6 +215,7 @@ window.addEventListener('resize', resize);
 
 function animate() {
   requestAnimationFrame(animate);
+  if (viewMode === 'pixel') { pv.draw(); return; }
   controls.update();
   renderer.render(scene, camera);
 }
@@ -243,6 +260,8 @@ function connect() {
   ws.onmessage = (m) => {
     const f = JSON.parse(m.data);
     agents = f.agents;
+    pv.setFrame(f);
+    if (f.fields) pv.setFields(f.fields, f.clock);
     if (f.fields) {
       Object.assign(fields, f.fields);
       if (layer === 'surface' || layer === 'plants') paintTerrain();
@@ -374,9 +393,11 @@ function tree(n) {
 
 async function selectAgent(id) {
   selected = id;
+  pv.selected = id;
   document.querySelector('[data-tab="organism"]').click();
   const [d, lin] = await Promise.all([api('/api/agent/' + id), api(`/api/agent/${id}/lineage`)]);
   $('#org-empty').style.display = 'none';
+  pv.selectedName = d.name;
   if (d.detail) { $('#org').innerHTML = `<p class="muted">${d.detail}</p>`; return; }
   const bio = (d.biography || []).map((e) => `<li><span class="t">t=${e.tick}</span>${e.kind.replace(/_/g, ' ')} ${e.other > 0 && e.other !== id ? who(e.other) : ''} <span class="muted small">${JSON.stringify(e.data).slice(0, 70)}</span></li>`).join('');
   if (!d.alive) {
@@ -433,9 +454,17 @@ document.querySelectorAll('input[name=layer]').forEach((r) => r.addEventListener
   layer = e.target.value;
   if (!['surface', 'plants'].includes(layer)) fields[layer] = await api('/api/field/' + layer);
   paintTerrain();
+  pv.setOverlay(layer === 'surface' ? null : (i) => (terrainColors ? [terrainColors[i * 3], terrainColors[i * 3 + 1], terrainColors[i * 3 + 2]] : null));
 }));
 $('#show-clouds').onchange = paintClouds;
-$('#color-groups').onchange = paintAgents;
+$('#color-groups').onchange = () => { pv.groupColors = $('#color-groups').checked; paintAgents(); };
+$('#follow').onchange = (e) => { pv.follow = e.target.checked; };
+$('#viewmode').onchange = (e) => {
+  viewMode = e.target.value;
+  $('#pixel').classList.toggle('off', viewMode !== 'pixel');
+  $('#scene').classList.toggle('off', viewMode !== '3d');
+  resize();
+};
 document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
@@ -462,7 +491,10 @@ async function init() {
   const mor = await api('/api/morality');
   $('#nw-fw').innerHTML = Object.entries(mor.frameworks).map(([k, v]) => `<option value="${k}" title="${v.description}" ${k === mor.current ? 'selected' : ''}>${k}</option>`).join('');
   buildWorld();
+  pv.setWorld(world);
+  pv.opts.actions = world.actions;
   resize();
+  pv.fit();
   refreshState(); refreshStats();
 }
 

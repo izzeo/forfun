@@ -85,6 +85,9 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
         return dict(width=w.W, height=w.H, sea_level=s.cfg.sea_level, elevation=_r(w.elev.ravel(), 3),
                     water=w.water.ravel().astype(int).tolist(), ptype=w.ptype.ravel().tolist(),
                     river=(w.river | w.lake).ravel().astype(int).tolist(),
+                    sand=w.sand.ravel().astype(int).tolist() if hasattr(w, "sand") else [],
+                    rock=w.rock.ravel().tolist() if hasattr(w, "rock") else [],
+                    stony=(w.stone >= 1).ravel().astype(int).tolist(),
                     plants=[dict(name=p["name"], color=p["color"]) for p in L.PLANTS],
                     celestial=w.celestial.to_dict(), reality_layers=L.REALITY_LAYERS,
                     known_layers=s.civ.layers, config=s.cfg.to_dict(), skills=L.SKILLS, actions=L.ACTIONS,
@@ -122,11 +125,14 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
         g = p.genome
         return np.column_stack([p.id, np.round(p.x, 2), np.round(p.y, 2), p.species, p.group, p.last_action,
                                 np.round(g[:, GN.T["size"]], 2), np.round(g[:, GN.T["hue"]], 2),
-                                np.round(g[:, GN.T["brain"]], 2), life_stage(p)]).tolist()
+                                np.round(g[:, GN.T["brain"]], 2), life_stage(p),
+                                np.round(g[:, GN.T["aquatic"]], 2), np.round(g[:, GN.T["diet"]], 2),
+                                np.round(p.health, 2)]).tolist()
 
     @app.get("/api/agents")
     def agents():
-        return dict(columns=["id", "x", "y", "species", "group", "action", "size", "hue", "brain", "stage"],
+        return dict(columns=["id", "x", "y", "species", "group", "action", "size", "hue", "brain", "stage",
+                             "aquatic", "diet", "health"],
                     rows=compact_agents(S()))
 
     def agent_detail(s, aid: int):
@@ -309,7 +315,8 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
                     clouds=np.clip(w.clouds * 255, 0, 255).astype(np.uint8).ravel().tolist(),
                     struct=w.struct.ravel().tolist(),
                     fire=np.clip(w.fire * 255, 0, 255).astype(np.uint8).ravel().tolist(),
-                    ptype=w.ptype.ravel().tolist())
+                    ptype=w.ptype.ravel().tolist(),
+                    temp=np.clip((w.temperature + 30) * 4, 0, 255).astype(np.uint8).ravel().tolist())
                 frame["sun"] = s.clock.sun_elevation()
         return frame
 

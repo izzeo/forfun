@@ -12,7 +12,8 @@
 <body>
 <div id="app">
   <div id="viewport">
-    <canvas id="scene"></canvas>
+    <canvas id="scene" class="off"></canvas>
+    <canvas id="pixel"></canvas>
     <div id="topbar">
       <div class="brand">GENESIS</div>
       <div id="clock">—</div>
@@ -28,6 +29,10 @@
           <option value="max">max speed</option>
         </select>
         <span id="rate" class="muted"></span>
+        <select id="viewmode" title="How the world is drawn">
+          <option value="pixel" selected>Pixel view</option>
+          <option value="3d">3D view</option>
+        </select>
       </div>
     </div>
     <div id="layers">
@@ -42,6 +47,8 @@
       <label><input type="checkbox" id="color-groups"> Colour by group</label>
       <div class="label" style="margin-top:8px">Scale</div>
       <label><input type="checkbox" id="micro-mode"> Microscope click</label>
+      <label><input type="checkbox" id="follow"> Follow selected</label>
+      <div class="small muted" style="margin-top:4px">drag to pan · wheel to zoom</div>
     </div>
     <div id="tooltip"></div>
     <div id="micro" class="hidden">
@@ -100,6 +107,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="/static/app.js?v=5"></script>
+<script type="module" src="/static/app.js?v=6"></script>
 </body>
 </html>
