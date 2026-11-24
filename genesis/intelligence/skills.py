@@ -93,7 +93,7 @@ def imitate(sim, I: np.ndarray, J: np.ndarray, boost: np.ndarray) -> int:
     g = pop.genome
     st = life_stage(pop)
     gap = pop.skills[J] - pop.skills[I]
-    able = (pop.skills[J] > 0.15) & (gap > 0.1)
+    able = (pop.skills[J] > 0.12) & (gap > 0.05)
     p = (0.03 * (0.2 + g[I, GN.T["brain"]]) * (0.3 + g[I, GN.T["sociality"]])
          * np.where(st[I] <= 2, 2.0, 1.0) * boost)[:, None]
     teach = (0.5 + pop.norms[J, 3:4].clip(0, 1) + (st[J] == 4)[:, None] * 0.5)  # responsibility, elders teach
@@ -101,7 +101,8 @@ def imitate(sim, I: np.ndarray, J: np.ndarray, boost: np.ndarray) -> int:
     cnt = 0
     for k, sk in zip(*np.nonzero(hit)):
         i, j = int(I[k]), int(J[k])
-        level = float(pop.skills[i, sk] + 0.5 * gap[k, sk])
+        # copying a demonstrated procedure is fairly faithful; mastery then grows with practice
+        level = float(pop.skills[i, sk] + 0.8 * gap[k, sk])
         learn_skill(sim, i, int(sk), level, source="social", teacher=int(pop.id[j]))
         MEM.record(pop, np.array([j]), MEM.M["taught"], 0.5, pop.id[i], sim.clock.tick)
         cnt += 1
@@ -362,7 +363,8 @@ def work(sim, pc, act, reward) -> int:
             pop.stone_rock[i] = w.rock[cy, cx]
             done = "gather_stone"
         elif mat[OBJ["nut"]] and w.biomass[cy, cx] > 0.4 and inv[i, R["wood"]] < lim[R["wood"]] and \
-                (sk[i, S["shelter"]] > 0.1 or sk[i, S["fire"]] > 0.1 or sk[i, S["charcoal"]] > 0.1):
+                (sk[i, S["shelter"]] > 0.1 or sk[i, S["fire"]] > 0.1 or sk[i, S["charcoal"]] > 0.1
+                 or (sk[i, S["knap_tool"]] > 0.1 and inv[i, R["tool"]] >= 1)):   # cutting sticks needs an edge
             w.biomass[cy, cx] -= CH.WOOD_ENERGY          # the wood keeps the energy of the biomass
             n0 = float(inv[i, R["wood"]])
             pop.wood_moist[i] = (pop.wood_moist[i] * n0 + CH.WOOD[CH.E["H2O"]]) / (n0 + 1)
