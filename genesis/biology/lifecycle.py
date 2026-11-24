@@ -143,9 +143,14 @@ def bury(sim, cause: np.ndarray, killers: dict[int, int]):
     idx = np.nonzero(dead)[0]
     g = pop.genome
     body = pop.body_mass()[idx]
+    from ..physics import chemistry as CH
     E = np.where(sim.consumed[idx], 0.0, pop.energy[idx] + body + pop.inventory[idx, L.R["food"]])
+    # what the dead carried stays where they fell: wood/charcoal rot, minerals become debris
+    E = E + CH.WOOD_ENERGY * pop.inventory[idx, L.R["wood"]] + CH.CHARCOAL_ENERGY * pop.inventory[idx, L.R["charcoal"]]
+    minerals = sum(pop.inventory[idx, L.R[r]] * u for r, u in L.MINERAL_UNITS.items())
     cy, cx = w.cell_of(pop.x[idx], pop.y[idx])
     np.add.at(w.detritus, (cy, cx), E.astype(np.float32))
+    np.add.at(w.debris, (cy, cx), minerals.astype(np.float32))
     for k, i in enumerate(idx):
         c = L.DEATH_CAUSES[int(cause[i])]
         sim.stats_counter["deaths"] += 1

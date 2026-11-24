@@ -110,7 +110,10 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
                     requested_rate=r.rate, effective_rate=round(r.effective_rate, 2), ms_per_tick=round(s.last_step_ms, 2),
                     civ=s.civ.summary(), latest=last, snapshots=[t for t, _ in s.snapshots], storms=s.world.storms,
                     moral_framework=s.moral.framework, scenario=s.cfg.scenario, seed=s.cfg.seed,
-                    lod=s.world.lod_stats, energy=dict(total=round(s.total_energy(), 2), **s.world.ledger.to_dict()))
+                    lod=s.world.lod_stats, energy=dict(total=round(s.total_energy(), 2), **s.world.ledger.to_dict()),
+                    matter=dict(minerals=round(s.total_minerals(), 2)),
+                    climate=dict(co2=round(float(getattr(s.world, "co2", 1.0)), 4),
+                                 greenhouse_c=round(float(getattr(s.world, "greenhouse", 0.0)), 3)))
 
     def compact_agents(s):
         p = s.pop
@@ -160,6 +163,9 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
             beliefs=dict(zip(["spirits", "naturalism", "ritual"], _r(p.beliefs[i]))),
             skills={L.SKILLS[k]: round(float(v), 3) for k, v in enumerate(p.skills[i]) if v > 0.01},
             inventory={L.RESOURCES[k]: round(float(v), 2) for k, v in enumerate(p.inventory[i]) if v > 0.01},
+            materials=dict(wood_moisture=round(float(p.wood_moist[i]), 3), stone_tool=round(float(p.tool_q[i]), 2),
+                           stone_tool_durability=round(float(p.tool_dur[i]), 3), metal_tool=round(float(p.metal_q[i]), 2),
+                           glass_clarity=round(float(p.glass_q[i]), 2)),
             food_values={L.PLANTS[k]["name"]: round(float(v), 3) for k, v in enumerate(p.food_value[i])},
             innate_food={L.PLANTS[k]["name"]: round(float(g[GN.FOOD_PREF0 + k]), 3) for k in range(L.N_PLANTS)},
             habits={L.ACTIONS[k]: round(float(v), 3) for k, v in enumerate(p.habit[i])},

@@ -25,6 +25,7 @@ from ..intelligence import brain, skills
 from ..intelligence.perception import perceive
 from ..intelligence.psyche import Psyche
 from ..memory import memory as MEM
+from ..physics import chemistry as CH
 from ..physics import laws as L
 from ..physics.micro import MicroRegion
 from ..physics.world import World
@@ -48,6 +49,11 @@ def upgrade_world(w) -> None:
         w.base_moist = np.maximum(w.base_moist, np.clip(0.8 - near / 5.0, 0, 1)).astype(np.float32)
     if not hasattr(w, "store_food"):
         w.store_food = np.zeros_like(w.biomass)
+    if not hasattr(w, "rock"):
+        from ..physics.world import init_geology
+        ore_before = w.ore.copy()
+        init_geology(w)
+        w.ore = ore_before
 
 
 class Simulation:
@@ -122,8 +128,16 @@ class Simulation:
     def total_energy(self) -> float:
         pop = self.pop
         agents = float(pop.energy.sum(dtype=np.float64) + pop.body_mass().sum(dtype=np.float64)
-                       + pop.inventory[:, L.R["food"]].sum(dtype=np.float64)) if len(pop) else 0.0
+                       + pop.inventory[:, L.R["food"]].sum(dtype=np.float64)
+                       + CH.WOOD_ENERGY * pop.inventory[:, L.R["wood"]].sum(dtype=np.float64)
+                       + CH.CHARCOAL_ENERGY * pop.inventory[:, L.R["charcoal"]].sum(dtype=np.float64)) if len(pop) else 0.0
         return self.world.total_energy() + agents
+
+    def total_minerals(self) -> float:
+        """Mineral matter anywhere: deposits, ruins, structures and what organisms carry."""
+        inv = self.pop.inventory
+        carried = sum(float(inv[:, L.R[r]].sum(dtype=np.float64)) * u for r, u in L.MINERAL_UNITS.items()) if len(self.pop) else 0.0
+        return self.world.mineral_total() + carried
 
     # ------------------------------------------------------------------ events
     def _handle_events(self) -> None:
@@ -203,6 +217,7 @@ class Simulation:
             skills.experiment(self, pc, act, reward)
             skills.work(self, pc, act, reward)
             self._eat_stores()
+            self._dry_wood()
             st = self.social.interact(pc, act, attacks)
             self.social_stats.update(st)
             cause = lifecycle.metabolize(self, pc, act, move_cost, dmg)
@@ -272,10 +287,21 @@ class Simulation:
         # food spoils without pottery
         spoil = (pop.inventory[:, L.R["food"]] > 0) & (pop.inventory[:, L.R["pottery"]] < 1)
         if spoil.any():
-            amt = pop.inventory[spoil, L.R["food"]] * 0.01
+            salted = pop.inventory[spoil, L.R["salt"]] >= 1      # salt draws water out: slows decay
+            amt = pop.inventory[spoil, L.R["food"]] * np.where(salted, 0.003, 0.01)
             pop.inventory[spoil, L.R["food"]] -= amt
             cy, cx = self.world.cell_of(pop.x[spoil], pop.y[spoil])
             np.add.at(self.world.detritus, (cy, cx), amt)
+
+    def _dry_wood(self) -> None:
+        """Carried wood dries towards air-dry moisture; rain wets it, a fire dries it fast."""
+        pop, w = self.pop, self.world
+        if not len(pop):
+            return
+        cy, cx = w.cell_of(pop.x, pop.y)
+        wet = w.rain[cy, cx] > 0.01
+        rate = np.where(wet, -0.01, 0.002 + 0.01 * (w.fire[cy, cx] > 0.1) + 0.001 * np.clip(w.temperature[cy, cx] / 30, 0, 1))
+        pop.wood_moist = np.clip(pop.wood_moist - rate, CH.AIR_DRY, CH.WOOD[CH.E["H2O"]]).astype(np.float32)
 
     def _decay_memories(self) -> None:
         pop = self.pop

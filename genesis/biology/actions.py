@@ -104,11 +104,14 @@ def eat(sim, pc, act, gain_out):
     room = np.clip(cap - pop.energy[eaters], 0, None)
     # accessibility of hidden or locked energy depends on skills
     sk = pop.skills[eaters]
-    tool = np.minimum(pop.inventory[eaters, L.R["tool"]] + pop.inventory[eaters, L.R["metal"]], 1)
+    from ..intelligence.skills import tool_power, wear_tools
+    tool = np.minimum(tool_power(pop, eaters), 1.5)
     unlock = np.zeros(len(eaters), np.float32)
     unlock = np.where(t == L.NUT_TREE, sk[:, L.SK["crack_nuts"]] * (0.6 + 0.4 * tool), unlock)
     unlock = np.where(t == L.TUBER, sk[:, L.SK["dig"]] * (0.6 + 0.4 * tool), unlock)
+    unlock = np.minimum(unlock, 1.0)
     access = (1 - L.PLANT_LOCKED[t]) + L.PLANT_LOCKED[t] * unlock
+    wear_tools(sim, eaters[(L.PLANT_LOCKED[t] > 0) & (tool > 0)], 0.5)
     reachable = w.biomass[cy, cx] * ((1 - L.PLANT_HIDDEN[t]) + L.PLANT_HIDDEN[t] * unlock)
     in_w = w.water[cy, cx]
     aq = g[eaters, GN.T["aquatic"]]
@@ -195,7 +198,8 @@ def attack(sim, pc, act, gain_out, damage_by_cause):
     if len(att) == 0:
         return out
     tgt = pc.prey_idx[att]
-    tool = np.minimum(pop.inventory[:, L.R["tool"]] + 2 * pop.inventory[:, L.R["metal"]], 2)
+    from ..intelligence.skills import tool_power, wear_tools
+    tool = tool_power(pop)
     strength = pop.body_mass() * (0.5 + 0.5 * pop.health) * (1 + 0.4 * tool) * (0.7 + 0.6 * g[:, GN.T["aggression"]])
     # cooperative hunting: allies attacking the same target add strength
     allies = np.bincount(tgt, minlength=len(pop))[tgt] - 1
@@ -207,6 +211,7 @@ def attack(sim, pc, act, gain_out, damage_by_cause):
     gd = GN.genetic_distance(g[att], g[tgt])
     cause = np.where(gd > 0.1, C["predation"], C["violence"])
     np.add.at(damage_by_cause, (tgt, cause), dmg)
+    wear_tools(sim, att, 1.0)
     pop.energy[att] -= 0.01 * P.body(g[att])
     w.ledger.heat_out += float((0.01 * P.body(g[att])).sum())
     # learning by the victim: fear of this appearance, remember the place

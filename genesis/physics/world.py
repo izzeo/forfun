@@ -73,6 +73,40 @@ class Celestial:
                     star_count=self.star_count)
 
 
+def init_geology(w) -> None:
+    """Rock types, finite mineral deposits, matter bookkeeping and the atmosphere.
+
+    Deterministic from the terrain (no random numbers), so it can also upgrade
+    worlds saved before geology existed.
+    """
+    from . import chemistry as CH
+    H, W = w.H, w.W
+    land = ~w.water
+    yy, xx = np.mgrid[0:H, 0:W]
+    band = (np.sin(xx * 0.31 + yy * 0.17) + np.sin(xx * 0.07 - yy * 0.23) * 1.3)  # strata pattern
+    rock = np.full((H, W), CH.GRANITE, np.int8)
+    rock[band > 1.2] = CH.FLINT
+    rock[(band < -1.0) & (w.height_above < 0.5)] = CH.LIMESTONE
+    rock[(w.height_above > 0.65) & (band > -0.3) & (band < 0.6)] = CH.BASALT
+    w.rock = rock
+    clay = w.clay if w.clay.dtype == bool else w.clay > 0
+    sand = w.sand if w.sand.dtype == bool else w.sand > 0
+    w.clay_amt = np.where(clay, 4.0 + 2.0 * (band > 0), 0.0).astype(np.float32)
+    w.sand_amt = np.where(sand, 4.0, 0.0).astype(np.float32)
+    # sand purity: quartz sand far from basalt/iron is purer
+    w.sand_purity = np.clip(0.86 + 0.05 * band - 0.08 * (rock == CH.BASALT), 0.6, 0.99).astype(np.float32)
+    # copper ore: veins in basalt/granite mountains (hidden underground)
+    w.copper = np.where(land & (w.height_above > 0.45) & (np.sin(xx * 0.5) * np.cos(yy * 0.45) > 0.75), 2.0, 0.0).astype(np.float32)
+    # salt: evaporite flats on warm, dry coasts
+    w.salt_amt = np.where(sand & (w.base_temp > 15) & (w.base_moist < 0.55), 3.0, 0.0).astype(np.float32)
+    w.debris = np.zeros((H, W), np.float32)          # broken tools, shards, slag (mineral units)
+    w.struct_minerals = np.zeros((H, W), np.float32)  # minerals built into kilns/furnaces
+    w.struct_energy = np.zeros((H, W), np.float32)    # wood built into shelters/shrines (energy units)
+    w.clay = w.clay_amt >= 1
+    w.sand = w.sand_amt >= 1
+    w.co2 = 1.0                                       # atmospheric CO2 relative to the start
+
+
 class World:
     def __init__(self, cfg: WorldConfig, rng: np.random.Generator):
         self.cfg = cfg
@@ -144,6 +178,7 @@ class World:
         ore_n = _value_noise(rng, H, W, 4, 7)
         self.ore = np.where(land & (height_above > 0.3) & (ore_n > 0.7), 3 * ore_n, 0).astype(np.float32)  # hidden underground
         self.dug = np.zeros((H, W), dtype=bool)
+        init_geology(self)
 
         self.store_food = np.zeros((H, W), dtype=np.float32)   # food kept in storage pits (energy units)
         self.struct = np.zeros((H, W), dtype=np.int8)
@@ -228,7 +263,11 @@ class World:
         seasonal = 11.0 * tilt * season * self.lat
         seasonal = np.where(self.water, seasonal * 0.5, seasonal)
         diurnal = 5.0 * clock.sun_elevation() * (1 - 0.5 * np.clip(self.clouds, 0, 1))
-        self.temperature = (self.base_temp + seasonal + diurnal + self.temp_offset).astype(np.float32)
+        # greenhouse effect: carbon released by decay, respiration and burning warms the planet
+        from . import chemistry as CH
+        self.co2 = CH.co2_ratio(self.ledger.solar_in, self.ledger.heat_out)
+        self.greenhouse = CH.greenhouse_offset(self.co2)
+        self.temperature = (self.base_temp + seasonal + diurnal + self.temp_offset + self.greenhouse).astype(np.float32)
         self.temperature[self.fire > 0.1] += 15.0 * self.fire[self.fire > 0.1]
 
         # ---- flora (LOD) ----------------------------------------------------
@@ -269,6 +308,12 @@ class World:
             hearth = self.struct == L.STRUCT_HEARTH
             self.struct_hp[hearth] -= 0.03 * (1 + 5 * self.rain[hearth])  # fuel burns out
             gone = built & (self.struct_hp <= 0)
+            if gone.any():
+                # ruins: built-in minerals become rubble, built-in wood rots
+                self.debris[gone] += self.struct_minerals[gone]
+                self.struct_minerals[gone] = 0
+                self.detritus[gone] += self.struct_energy[gone]
+                self.struct_energy[gone] = 0
             # a collapsed pit spills its contents; pits slowly spoil anyway
             lost = np.where(gone, self.store_food, 0) + self.store_food * L.STORE_SPOIL
             self.store_food -= lost.astype(np.float32)
@@ -346,7 +391,12 @@ class World:
 
     def total_energy(self) -> float:
         return float(self.biomass.sum(dtype=np.float64) + self.detritus.sum(dtype=np.float64)
-                     + self.store_food.sum(dtype=np.float64))
+                     + self.store_food.sum(dtype=np.float64) + self.struct_energy.sum(dtype=np.float64))
+
+    def mineral_total(self) -> float:
+        """Mineral matter in the ground, in ruins and built into structures (units)."""
+        return float(sum(a.sum(dtype=np.float64) for a in (self.stone, self.clay_amt, self.sand_amt, self.ore,
+                                                          self.copper, self.salt_amt, self.debris, self.struct_minerals)))
 
     # observer-facing field accessor ------------------------------------
     def field(self, name: str) -> np.ndarray:

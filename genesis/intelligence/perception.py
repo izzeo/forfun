@@ -22,7 +22,7 @@ _ANG = np.arange(N_DIR) * (2 * np.pi / N_DIR)
 DIRS = np.stack([np.cos(_ANG), np.sin(_ANG)], axis=1).astype(np.float32)
 
 OBJECTS = ["stone", "stone2", "nut", "wood", "wood2", "tool", "ground", "seed", "dug", "clay", "fire",
-           "ore", "pottery", "sand", "glass", "metal", "small_thing", "sky", "words"]
+           "ore", "pottery", "sand", "glass", "metal", "small_thing", "sky", "words", "charcoal", "kiln", "salt"]
 OBJ = {n: i for i, n in enumerate(OBJECTS)}
 HUE_BINS = 8
 
@@ -167,8 +167,8 @@ def perceive(sim) -> Percept:
     inv = pop.inventory
     mat = np.zeros((n, len(OBJECTS)), dtype=bool)
     cs = w.stone[cy, cx]
-    mat[:, OBJ["stone"]] = (cs > 0.5) | (inv[:, L.R["stone"]] >= 1)
-    mat[:, OBJ["stone2"]] = (cs > 1.5) | ((cs > 0.5) & (inv[:, L.R["stone"]] >= 1)) | (inv[:, L.R["stone"]] >= 2)
+    mat[:, OBJ["stone"]] = (cs >= 1) | (inv[:, L.R["stone"]] >= 1)
+    mat[:, OBJ["stone2"]] = (cs >= 2) | ((cs >= 1) & (inv[:, L.R["stone"]] >= 1)) | (inv[:, L.R["stone"]] >= 2)
     tree = (w.ptype[cy, cx] == L.NUT_TREE) & (w.biomass[cy, cx] > 0.1)
     mat[:, OBJ["nut"]] = tree
     mat[:, OBJ["wood"]] = (tree & (w.biomass[cy, cx] > 0.3)) | (inv[:, L.R["wood"]] >= 1)
@@ -179,7 +179,13 @@ def perceive(sim) -> Percept:
     mat[:, OBJ["dug"]] = w.dug[cy, cx]
     mat[:, OBJ["clay"]] = w.clay[cy, cx] | (inv[:, L.R["clay"]] >= 1)
     mat[:, OBJ["fire"]] = warmth > 0.1
-    mat[:, OBJ["ore"]] = inv[:, L.R["ore"]] >= 1
+    mat[:, OBJ["ore"]] = (inv[:, L.R["ore"]] >= 1) | (inv[:, L.R["copper_ore"]] >= 1)
+    mat[:, OBJ["charcoal"]] = inv[:, L.R["charcoal"]] >= 1
+    mat[:, OBJ["salt"]] = (inv[:, L.R["salt"]] >= 1) | (w.salt_amt[cy, cx] >= 1)
+    kilnish = (w.struct == L.STRUCT_KILN) | (w.struct == L.STRUCT_FURNACE)
+    pk = np.pad(kilnish, 1)
+    near_kiln = kilnish | pk[:-2, 1:-1] | pk[2:, 1:-1] | pk[1:-1, :-2] | pk[1:-1, 2:]
+    mat[:, OBJ["kiln"]] = near_kiln[cy, cx]
     mat[:, OBJ["pottery"]] = inv[:, L.R["pottery"]] >= 1
     mat[:, OBJ["sand"]] = w.sand[cy, cx] | (inv[:, L.R["sand"]] >= 1)
     mat[:, OBJ["glass"]] = inv[:, L.R["glass"]] >= 1

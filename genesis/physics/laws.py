@@ -37,10 +37,14 @@ GRASS, BERRY, NIGHTSHADE, NUT_TREE, ALGAE, TUBER = range(N_PLANTS)
 # --------------------------------------------------------------------------
 # Materials / inventory
 # --------------------------------------------------------------------------
-RESOURCES = ["food", "stone", "wood", "clay", "ore", "tool", "pottery", "metal", "glass", "sand"]
+RESOURCES = ["food", "stone", "wood", "clay", "ore", "tool", "pottery", "metal", "glass", "sand",
+             "copper_ore", "charcoal", "salt"]
+# mineral units carried per item (matter is conserved; food/wood/charcoal are organic = energy)
+MINERAL_UNITS = {"stone": 1, "clay": 1, "ore": 1, "tool": 2, "pottery": 1, "metal": 1, "glass": 1, "sand": 1,
+                 "copper_ore": 1, "salt": 1}
 R = {n: i for i, n in enumerate(RESOURCES)}
 N_RES = len(RESOURCES)
-CARRY_LIMIT = np.array([3, 3, 4, 2, 2, 1, 1, 1, 1, 2], dtype=np.float32)
+CARRY_LIMIT = np.array([3, 3, 4, 2, 2, 1, 1, 1, 1, 2, 2, 3, 2], dtype=np.float32)
 
 # --------------------------------------------------------------------------
 # Skills — each is a *physical affordance* that exists in the world whether
@@ -48,7 +52,8 @@ CARRY_LIMIT = np.array([3, 3, 4, 2, 2, 1, 1, 1, 1, 2], dtype=np.float32)
 # (trying a verb on objects present) or by learning from someone who knows.
 # --------------------------------------------------------------------------
 SKILLS = ["crack_nuts", "knap_tool", "dig", "fire", "shelter", "cultivate",
-          "pottery", "smelting", "glassmaking", "microscope", "telescope", "writing", "storage"]
+          "pottery", "smelting", "glassmaking", "microscope", "telescope", "writing", "storage",
+          "charcoal", "kiln", "furnace"]
 SK = {n: i for i, n in enumerate(SKILLS)}
 N_SKILLS = len(SKILLS)
 
@@ -56,18 +61,22 @@ VERBS = ["strike", "dig", "combine", "heat", "stack", "plant", "shape", "look_th
 
 # (verb, required objects, base difficulty, extra condition key)
 RECIPES = {
+    # condition keys are evaluated by physics (genesis.physics.chemistry), never shown to organisms
     "crack_nuts":  ("strike", ("stone", "nut"), 0.30, None),
-    "knap_tool":   ("strike", ("stone", "stone2"), 0.20, None),
+    "knap_tool":   ("strike", ("stone", "stone2"), 0.20, "knappable"),
     "dig":         ("dig", ("ground", "tool"), 0.30, None),
-    "fire":        ("strike", ("stone", "wood", "tool"), 0.10, "dry"),
+    "fire":        ("strike", ("stone", "wood"), 0.15, "spark"),
     "fire_capture": ("combine", ("fire", "wood"), 0.35, None),   # learn fire from a wildfire
     "shelter":     ("stack", ("wood", "wood2", "tool"), 0.25, None),
     "cultivate":   ("plant", ("seed", "ground", "dug"), 0.20, None),
-    "pottery":     ("heat", ("clay", "fire"), 0.20, None),
-    "smelting":    ("heat", ("ore", "fire", "pottery"), 0.12, None),
-    "glassmaking": ("heat", ("sand", "fire", "pottery"), 0.12, None),
-    "microscope":  ("look_through", ("glass", "metal", "small_thing"), 0.08, None),
-    "telescope":   ("look_through", ("glass", "metal", "sky"), 0.08, "night"),
+    "pottery":     ("heat", ("clay", "fire"), 0.20, "T:ceramic"),
+    "charcoal":    ("heat", ("wood", "kiln"), 0.25, "T:charcoal"),
+    "kiln":        ("stack", ("clay", "stone", "fire"), 0.15, None),
+    "furnace":     ("combine", ("kiln", "fire", "pottery"), 0.12, None),
+    "smelting":    ("heat", ("ore", "charcoal", "kiln"), 0.15, "T:smelt"),
+    "glassmaking": ("heat", ("sand", "salt", "kiln"), 0.12, "T:glass"),
+    "microscope":  ("look_through", ("glass", "metal", "small_thing"), 0.08, "clear_glass"),
+    "telescope":   ("look_through", ("glass", "metal", "sky"), 0.08, "clear_glass"),
     "writing":     ("shape", ("clay", "words", "pottery"), 0.06, None),
     "storage":     ("dig", ("ground", "dug", "seed"), 0.25, None),   # bury food in a pit: it keeps
 }
@@ -90,8 +99,9 @@ DEATH_CAUSES = ["starvation", "old_age", "predation", "disease", "poisoning",
 # --------------------------------------------------------------------------
 # Structures built on the grid
 # --------------------------------------------------------------------------
-STRUCT_NONE, STRUCT_SHELTER, STRUCT_FARM, STRUCT_SHRINE, STRUCT_HEARTH, STRUCT_WORKSHOP, STRUCT_STORE = range(7)
-STRUCTURES = ["none", "shelter", "farm", "shrine", "hearth", "workshop", "store"]
+STRUCT_NONE, STRUCT_SHELTER, STRUCT_FARM, STRUCT_SHRINE, STRUCT_HEARTH, STRUCT_WORKSHOP, STRUCT_STORE, \
+    STRUCT_KILN, STRUCT_FURNACE = range(9)
+STRUCTURES = ["none", "shelter", "farm", "shrine", "hearth", "workshop", "store", "kiln", "furnace"]
 STORE_CAPACITY = 6.0         # energy units a storage pit can hold
 STORE_SPOIL = 0.002          # per hour inside a pit (vs 1% per hour carried without pottery)
 

@@ -142,7 +142,7 @@ function paintClouds() {
 function paintStructures() {
   if (!fields.struct) return;
   let k = 0;
-  const colors = { 1: 0xd8b070, 2: 0x9bd35a, 3: 0xc08cff, 4: 0xff8a3d, 5: 0x9ab0c8, 6: 0x8a5a2b };
+  const colors = { 1: 0xd8b070, 2: 0x9bd35a, 3: 0xc08cff, 4: 0xff8a3d, 5: 0x9ab0c8, 6: 0x8a5a2b, 7: 0xb5653a, 8: 0xe04a1f };
   for (let i = 0; i < W * H && k < 6000; i++) {
     const s = fields.struct[i];
     if (!s) continue;
@@ -299,7 +299,7 @@ async function refreshState() {
   const k = [
     ['alive', state.population], ['species', L.species ?? '—'], ['generation', L.max_generation ?? 0],
     ['groups', state.civ.groups], ['settlements', state.civ.settlements], ['wars', state.civ.wars],
-    ['speakers', L.speakers ?? 0], ['language coh.', fmt(L.language_coherence)], ['ms / tick', state.ms_per_tick],
+    ['speakers', L.speakers ?? 0], ['language coh.', fmt(L.language_coherence)], ['ms / tick', state.ms_per_tick], ['CO₂ ×', fmt(state.climate?.co2, 3)], ['greenhouse °C', fmt(state.climate?.greenhouse_c, 2)], ['minerals', Math.round(state.matter?.minerals ?? 0)],
   ];
   $('#kpis').innerHTML = k.map(([a, b]) => `<div class="kpi"><b>${b}</b><span>${a}</span></div>`).join('');
   knownLayers = state.civ.layers;
@@ -400,6 +400,7 @@ async function selectAgent(id) {
     <h3>Learned food values vs. innate</h3><div class="bars">${bar(Object.fromEntries(Object.entries(d.food_values).map(([k, v]) => [k + ' (' + fmt(d.innate_food[k], 1) + ')', v])), 1.5)}</div>
     <h3>Habits</h3><div class="bars">${bar(d.habits, 2)}</div>
     <h3>Skills</h3><div>${Object.entries(d.skills).map(([k, v]) => `<span class="pill">${k} ${fmt(v)}</span>`).join('') || '<span class="muted">none</span>'}</div>
+    <h3>Materials</h3><div class="grid2 small"><span>wood moisture</span><span>${fmt(d.materials.wood_moisture)}</span><span>stone tool</span><span>${fmt(d.materials.stone_tool)} (wear ${fmt(1 - d.materials.stone_tool_durability)})</span><span>metal tool</span><span>${fmt(d.materials.metal_tool)}</span><span>glass clarity</span><span>${fmt(d.materials.glass_clarity)}</span></div>
     <h3>Inventory</h3><div>${Object.entries(d.inventory).map(([k, v]) => `<span class="pill">${k} ${fmt(v, 1)}</span>`).join('') || '<span class="muted">empty</span>'}</div>
     <h3>Norms</h3><div class="bars">${bar(d.norms)}</div>
     <h3>Beliefs</h3><div class="bars">${bar(d.beliefs)}</div>

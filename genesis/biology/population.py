@@ -62,6 +62,15 @@ FIELDS = {
     "prestige": (np.float32, (), 0.0),
     "dug_here": (np.int32, (), -1),            # cell index the organism last dug at
     "growth": (np.float32, (), 1.0),           # fraction of adult body built so far
+    # material qualities of what is carried (properties follow from chemistry)
+    "wood_moist": (np.float32, (), 0.45),      # moisture of carried wood (dries in air)
+    "tool_q": (np.float32, (), 0.0),           # effectiveness of the stone tool (rock hardness)
+    "tool_dur": (np.float32, (), 1.0),         # remaining durability of the stone tool
+    "metal_q": (np.float32, (), 0.0),          # effectiveness of the metal tool (copper / iron)
+    "metal_dur": (np.float32, (), 1.0),
+    "glass_q": (np.float32, (), 0.0),          # clarity of the glass (sand purity)
+    "sand_q": (np.float32, (), 0.85),          # purity of carried sand
+    "stone_rock": (np.int8, (), 0),            # rock type of carried stone
 }
 
 EMO = {"fear": 0, "joy": 1, "anger": 2, "sadness": 3, "affection": 4}
