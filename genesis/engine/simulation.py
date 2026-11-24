@@ -35,6 +35,21 @@ from .scheduler import Scheduler
 SNAPSHOT_VERSION = 1
 
 
+def upgrade_world(w) -> None:
+    """Bring worlds saved by older versions up to date (fields added later get computed or defaulted)."""
+    from ..physics import hydrology
+    if not hasattr(w, "river"):
+        hydrology.apply(w)
+        w.water = w.water | w.lake
+        w.deep = w.deep & ~w.lake
+        w.ptype[w.lake] = L.ALGAE
+        w.kmask[w.lake] = np.maximum(w.kmask[w.lake], 1.0)
+        near = hydrology.distance_to(w.river, 4)
+        w.base_moist = np.maximum(w.base_moist, np.clip(0.8 - near / 5.0, 0, 1)).astype(np.float32)
+    if not hasattr(w, "store_food"):
+        w.store_food = np.zeros_like(w.biomass)
+
+
 class Simulation:
     def __init__(self, cfg: WorldConfig | None = None):
         self.cfg = cfg or WorldConfig()
@@ -230,6 +245,24 @@ class Simulation:
     def _eat_stores(self) -> None:
         pop = self.pop
         cap = P.capacity(pop.genome)
+        w = self.world
+        # hungry organisms standing at a storage pit eat from it (no ownership yet: anyone can)
+        if w.store_food.any():
+            need = np.nonzero(pop.energy < 0.35 * cap)[0]
+            if len(need):
+                cy, cx = w.cell_of(pop.x[need], pop.y[need])
+                for k, i in enumerate(need):
+                    y0, y1 = max(0, cy[k] - 1), min(w.H, cy[k] + 2)
+                    x0, x1 = max(0, cx[k] - 1), min(w.W, cx[k] + 2)
+                    win = w.store_food[y0:y1, x0:x1]
+                    if win.max() <= 0:
+                        continue
+                    yy, xx = np.unravel_index(int(win.argmax()), win.shape)
+                    amt = float(min(win[yy, xx], 0.25, cap[i] - pop.energy[i]))
+                    win[yy, xx] -= amt
+                    pop.energy[i] += amt * 0.95
+                    w.ledger.heat_out += amt * 0.05
+                    self.analytics.first(self, "ate_stored", "Food stored in a pit was eaten later, in a time of need")
         hungry = (pop.energy < 0.3 * cap) & (pop.inventory[:, L.R["food"]] > 0)
         if hungry.any():
             amt = np.minimum(pop.inventory[hungry, L.R["food"]], 0.2)
@@ -295,6 +328,7 @@ class Simulation:
         self.world = World.__new__(World)
         self.world.__dict__.update(d["world"])
         self.world.cfg = self.cfg
+        upgrade_world(self.world)
         self.pop = Population()
         self.pop.load_state(d["pop"])
         self.civ = Civilization(); self.civ.load_state(d["civ"])

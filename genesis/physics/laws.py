@@ -48,7 +48,7 @@ CARRY_LIMIT = np.array([3, 3, 4, 2, 2, 1, 1, 1, 1, 2], dtype=np.float32)
 # (trying a verb on objects present) or by learning from someone who knows.
 # --------------------------------------------------------------------------
 SKILLS = ["crack_nuts", "knap_tool", "dig", "fire", "shelter", "cultivate",
-          "pottery", "smelting", "glassmaking", "microscope", "telescope", "writing"]
+          "pottery", "smelting", "glassmaking", "microscope", "telescope", "writing", "storage"]
 SK = {n: i for i, n in enumerate(SKILLS)}
 N_SKILLS = len(SKILLS)
 
@@ -69,6 +69,7 @@ RECIPES = {
     "microscope":  ("look_through", ("glass", "metal", "small_thing"), 0.08, None),
     "telescope":   ("look_through", ("glass", "metal", "sky"), 0.08, "night"),
     "writing":     ("shape", ("clay", "words", "pottery"), 0.06, None),
+    "storage":     ("dig", ("ground", "dug", "seed"), 0.25, None),   # bury food in a pit: it keeps
 }
 RECIPE_SKILL = {k: ("fire" if k == "fire_capture" else k) for k in RECIPES}
 
@@ -89,8 +90,10 @@ DEATH_CAUSES = ["starvation", "old_age", "predation", "disease", "poisoning",
 # --------------------------------------------------------------------------
 # Structures built on the grid
 # --------------------------------------------------------------------------
-STRUCT_NONE, STRUCT_SHELTER, STRUCT_FARM, STRUCT_SHRINE, STRUCT_HEARTH, STRUCT_WORKSHOP = range(6)
-STRUCTURES = ["none", "shelter", "farm", "shrine", "hearth", "workshop"]
+STRUCT_NONE, STRUCT_SHELTER, STRUCT_FARM, STRUCT_SHRINE, STRUCT_HEARTH, STRUCT_WORKSHOP, STRUCT_STORE = range(7)
+STRUCTURES = ["none", "shelter", "farm", "shrine", "hearth", "workshop", "store"]
+STORE_CAPACITY = 6.0         # energy units a storage pit can hold
+STORE_SPOIL = 0.002          # per hour inside a pit (vs 1% per hour carried without pottery)
 
 # --------------------------------------------------------------------------
 # Layers of reality. Inhabitants start knowing only "macro".

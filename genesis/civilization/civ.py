@@ -234,7 +234,7 @@ class Civilization:
                             seen.add(nb)
                             stack.append(nb)
             kinds = [int(w.struct[y, x]) for y, x in comp]
-            if len(comp) >= 3 and L.STRUCT_SHELTER in kinds:
+            if len(comp) >= 3 and (L.STRUCT_SHELTER in kinds or L.STRUCT_STORE in kinds):
                 clusters.append((comp, kinds))
         alive = set()
         for comp, kinds in clusters:
@@ -266,7 +266,8 @@ class Civilization:
             # writing: a settlement's records outlive individuals
             res = np.nonzero(near)[0]
             if len(res) and (pop.skills[res, L.SK["writing"]] > 0.1).any():
-                lib = np.maximum(np.array(s["library"]), pop.skills[res].max(axis=0))
+                old = np.zeros(L.N_SKILLS); old[:min(len(s["library"]), L.N_SKILLS)] = s["library"][:L.N_SKILLS]
+                lib = np.maximum(old, pop.skills[res].max(axis=0))
                 s["library"] = [round(float(v), 3) for v in lib]
                 pop.skills[res] = np.maximum(pop.skills[res], 0.95 * pop.skills[res] + 0.05 * lib * 0.6)
                 sim.analytics.first(sim, "library", "Knowledge recorded in writing in a settlement")

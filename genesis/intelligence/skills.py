@@ -176,7 +176,21 @@ def work(sim, pc, act, reward) -> int:
             if w.clay[cy, cx] and inv[i, R["clay"]] < lim[R["clay"]]:
                 inv[i, R["clay"]] += 1
             done = "dig"
-        elif sk[i, S["pottery"]] > 0.1 and inv[i, R["pottery"]] >= 1 and inv[i, R["food"]] < lim[R["food"]] and pop.energy[i] > 0.7 * cap[i] and w.biomass[cy, cx] > 0.3:
+        elif sk[i, S["storage"]] > 0.1 and inv[i, R["food"]] >= 0.2 and (store := _near_store(w, cy, cx)) is not None \
+                and w.store_food[store] < L.STORE_CAPACITY:
+            amt = float(min(inv[i, R["food"]], L.STORE_CAPACITY - w.store_food[store]))
+            inv[i, R["food"]] -= amt
+            w.store_food[store] += amt
+            pop.food_mem[i] = (store[1] + 0.5, store[0] + 0.5, 1.0)   # remember where the reserve is
+            done = "deposit"
+            sim.analytics.first(sim, "food_reserve", "Food was put aside in a storage pit for later")
+        elif sk[i, S["storage"]] > 0.1 and land and w.struct[cy, cx] == 0 and _near_struct(w, cy, cx, L.STRUCT_STORE, 4) == 0 \
+                and (pop.group[i] >= 0 or _near_struct(w, cy, cx, L.STRUCT_SHELTER, 3) > 0 or w.river[cy, cx] or pc.water_near[i]):
+            _build(sim, i, cy, cx, L.STRUCT_STORE, hp=1.0)
+            done = "store"
+        elif (sk[i, S["storage"]] > 0.1 or (sk[i, S["pottery"]] > 0.1 and inv[i, R["pottery"]] >= 1)) \
+                and inv[i, R["food"]] < (lim[R["food"]] if inv[i, R["pottery"]] >= 1 else 1.0) \
+                and pop.energy[i] > 0.6 * cap[i] and w.biomass[cy, cx] > 0.3:
             take = min(0.3, float(w.biomass[cy, cx]) - 0.1)
             w.biomass[cy, cx] -= take
             inv[i, R["food"]] += take
@@ -206,7 +220,7 @@ def work(sim, pc, act, reward) -> int:
             reward[i] += 0.05
             for s in _USES.get(done, ()):
                 sk[i, S[s]] = min(1.0, sk[i, S[s]] + 0.01)
-            if done in ("hearth", "shelter", "farm", "shrine"):
+            if done in ("hearth", "shelter", "farm", "shrine", "store"):
                 MEM.record(pop, np.array([i]), MEM.M["built"], 0.4, 0, tick)
                 MEM.consolidate(pop, np.array([i]), MEM.M["built"], 0.5, 0, tick, detail=f"built a {done}")
                 sim.analytics.first(sim, "built:" + done, f"First {done} built")
@@ -215,7 +229,7 @@ def work(sim, pc, act, reward) -> int:
 
 _USES = {"hearth": ["fire"], "shelter": ["shelter"], "tool": ["knap_tool"], "metal": ["smelting"],
          "glass": ["glassmaking"], "pottery": ["pottery"], "farm": ["cultivate"], "dig": ["dig"],
-         "store_food": ["pottery"]}
+         "store_food": ["storage"], "deposit": ["storage"], "store": ["storage"]}
 
 
 def _take_stone(w, inv, i, cy, cx, k):
@@ -223,6 +237,16 @@ def _take_stone(w, inv, i, cy, cx, k):
     inv[i, L.R["stone"]] -= from_inv
     rest = k - from_inv
     w.stone[cy, cx] = max(0.0, w.stone[cy, cx] - rest)
+
+
+def _near_store(w, cy, cx):
+    """The closest storage pit within one cell, as (y, x), or None."""
+    y0, y1 = max(0, cy - 1), min(w.H, cy + 2)
+    x0, x1 = max(0, cx - 1), min(w.W, cx + 2)
+    ys, xs = np.nonzero(w.struct[y0:y1, x0:x1] == L.STRUCT_STORE)
+    if len(ys) == 0:
+        return None
+    return (int(ys[0] + y0), int(xs[0] + x0))
 
 
 def _near_struct(w, cy, cx, kind, r):

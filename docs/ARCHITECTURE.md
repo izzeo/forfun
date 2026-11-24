@@ -10,7 +10,7 @@
 | # | Движок | Модули | Что делает |
 |---|---|---|---|
 | 1 | **Simulation Engine** | `engine/simulation.py`, `engine/scheduler.py`, `engine/runner.py`, `timekeeping.py` | Причинный порядок шага, событийная очередь, снапшоты, сохранение/загрузка, детерминированная перемотка, масштабы времени |
-| 2 | **Physics Engine** | `physics/world.py`, `physics/laws.py`, `physics/spatial.py`, `physics/micro.py` | Рельеф, вода, климат, день/ночь, сезоны, облака/дождь/ветер, бури, пожары, растения, разложение, скрытый микромир, руды, небо, энергетический баланс, LOD |
+| 2 | **Physics Engine** | `physics/world.py`, `physics/laws.py`, `physics/spatial.py`, `physics/micro.py`, `physics/hydrology.py` | Рельеф, реки и озёра (заполнение впадин + D8-сток), вода, климат, день/ночь, сезоны, облака/дождь/ветер, бури, пожары, растения, разложение, скрытый микромир, руды, небо, энергетический баланс, LOD |
 | 3 | **Biology Engine** | `biology/genome.py`, `biology/population.py`, `biology/actions.py`, `biology/lifecycle.py` | Геном→фенотип, движение, питание, хищничество, метаболизм, рост тела, жажда, терморегуляция, болезни, старение (Гомперц), смерть с причиной |
 | 4 | **Agent Intelligence** | `intelligence/perception.py`, `brain.py`, `skills.py`, `language.py`, `psyche.py` | Ограниченное восприятие, нейросеть решений, привычки, планирование, эксперименты, орудия, язык (naming game), эмоции |
 | 5 | **Memory System** | `memory/memory.py` | Кратковременная память (кольцевой буфер), консолидация в долговременную, забывание, семантическая память (ценности еды, места, навыки) |

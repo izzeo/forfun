@@ -127,8 +127,18 @@ class Population:
         return d
 
     def load_state(self, d: dict) -> None:
-        for name in FIELDS:
-            setattr(self, name, d[name])
+        """Load saved state, upgrading saves from older versions (new fields / new skills)."""
+        n = len(d["id"])
+        for name, (dt, shp, dflt) in FIELDS.items():
+            arr = d.get(name)
+            if arr is None:
+                arr = np.full((n,) + shp, dflt, dtype=dt)
+            elif arr.shape[1:] != shp:
+                new = np.full((n,) + shp, dflt, dtype=dt)
+                k = min(arr.shape[1], shp[0]) if shp else 0
+                new[:, :k] = arr[:, :k]
+                arr = new
+            setattr(self, name, arr)
         self.next_id = d["next_id"]
         self.ltm, self.relations, self.lexicon, self.names = d["ltm"], d["relations"], d["lexicon"], d["names"]
 

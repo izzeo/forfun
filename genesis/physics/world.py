@@ -17,6 +17,7 @@ import math
 import numpy as np
 
 from ..config import WorldConfig
+from . import hydrology
 from . import laws as L
 
 
@@ -91,14 +92,12 @@ class World:
         self.deep = self.elev < cfg.sea_level - 0.12
         land = ~self.water
 
-        # distance to water (rough): repeated dilation
-        dist = np.where(self.water, 0.0, 30.0)
-        for _ in range(12):
-            p = np.pad(dist, 1, mode="edge")
-            dist = np.minimum(dist, np.minimum.reduce([p[:-2, 1:-1], p[2:, 1:-1], p[1:-1, :-2], p[1:-1, 2:]]) + 1)
-        self.dist_water = dist.astype(np.float32)
-        # "coast": land cell next to water (drinkable)
-        self.coast = land & (self.dist_water <= 1.0)
+        # fresh water from the relief: rivers and lakes (see physics.hydrology)
+        hydrology.apply(self)
+        self.water = self.water | self.lake          # lakes are open water (shallow, never "deep")
+        land = ~self.water
+        # distance to any water, used for soil moisture: river valleys are fertile
+        self.dist_water = hydrology.distance_to(self.water | self.river, 12)
 
         height_above = np.clip((self.elev - cfg.sea_level) / (1 - cfg.sea_level), 0, 1)
         self.height_above = height_above.astype(np.float32)
@@ -146,6 +145,7 @@ class World:
         self.ore = np.where(land & (height_above > 0.3) & (ore_n > 0.7), 3 * ore_n, 0).astype(np.float32)  # hidden underground
         self.dug = np.zeros((H, W), dtype=bool)
 
+        self.store_food = np.zeros((H, W), dtype=np.float32)   # food kept in storage pits (energy units)
         self.struct = np.zeros((H, W), dtype=np.int8)
         self.struct_hp = np.zeros((H, W), dtype=np.float32)
         self.struct_group = np.full((H, W), -1, dtype=np.int32)
@@ -269,6 +269,10 @@ class World:
             hearth = self.struct == L.STRUCT_HEARTH
             self.struct_hp[hearth] -= 0.03 * (1 + 5 * self.rain[hearth])  # fuel burns out
             gone = built & (self.struct_hp <= 0)
+            # a collapsed pit spills its contents; pits slowly spoil anyway
+            lost = np.where(gone, self.store_food, 0) + self.store_food * L.STORE_SPOIL
+            self.store_food -= lost.astype(np.float32)
+            self.detritus += lost.astype(np.float32)
             self.struct[gone] = 0
             self.struct_group[gone] = -1
 
@@ -341,7 +345,8 @@ class World:
         return True
 
     def total_energy(self) -> float:
-        return float(self.biomass.sum(dtype=np.float64) + self.detritus.sum(dtype=np.float64))
+        return float(self.biomass.sum(dtype=np.float64) + self.detritus.sum(dtype=np.float64)
+                     + self.store_food.sum(dtype=np.float64))
 
     # observer-facing field accessor ------------------------------------
     def field(self, name: str) -> np.ndarray:
@@ -365,6 +370,8 @@ class World:
             return self.fire
         if name == "light":
             return self.light
+        if name == "rivers":
+            return (self.river | self.lake).astype(np.float32)
         if name == "structures":
             return self.struct.astype(np.float32)
         raise KeyError(name)

@@ -97,7 +97,8 @@ function paintTerrain() {
     const e = world.elevation[i];
     const wet = world.water[i];
     if (layer === 'surface' || layer === 'plants') {
-      if (wet) c = ramp(e / world.sea_level, [[0.05, 0.12, 0.25], [0.12, 0.35, 0.5]]);
+      if (world.river && world.river[i]) c = [0.25, 0.55, 0.9];
+      else if (wet) c = ramp(e / world.sea_level, [[0.05, 0.12, 0.25], [0.12, 0.35, 0.5]]);
       else {
         const pc = world.plants[ptype[i]].color;
         const b = plants ? plants[i] / 200 : 0.5;
@@ -141,13 +142,13 @@ function paintClouds() {
 function paintStructures() {
   if (!fields.struct) return;
   let k = 0;
-  const colors = { 1: 0xd8b070, 2: 0x9bd35a, 3: 0xc08cff, 4: 0xff8a3d, 5: 0x9ab0c8 };
+  const colors = { 1: 0xd8b070, 2: 0x9bd35a, 3: 0xc08cff, 4: 0xff8a3d, 5: 0x9ab0c8, 6: 0x8a5a2b };
   for (let i = 0; i < W * H && k < 6000; i++) {
     const s = fields.struct[i];
     if (!s) continue;
     const x = i % W, y = Math.floor(i / W);
     dummy.position.set(x - W / 2 + 0.5, heightAt(x, y) + 0.3, y - H / 2 + 0.5);
-    dummy.scale.set(1, s === 2 ? 0.2 : 1, 1);
+    dummy.scale.set(s === 6 ? 0.6 : 1, s === 2 ? 0.2 : s === 6 ? 0.35 : 1, s === 6 ? 0.6 : 1);
     dummy.updateMatrix();
     structMesh.setMatrixAt(k, dummy.matrix);
     structMesh.setColorAt(k, tmpColor.setHex(colors[s] || 0xffffff));

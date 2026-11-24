@@ -84,6 +84,7 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
         w = s.world
         return dict(width=w.W, height=w.H, sea_level=s.cfg.sea_level, elevation=_r(w.elev.ravel(), 3),
                     water=w.water.ravel().astype(int).tolist(), ptype=w.ptype.ravel().tolist(),
+                    river=(w.river | w.lake).ravel().astype(int).tolist(),
                     plants=[dict(name=p["name"], color=p["color"]) for p in L.PLANTS],
                     celestial=w.celestial.to_dict(), reality_layers=L.REALITY_LAYERS,
                     known_layers=s.civ.layers, config=s.cfg.to_dict(), skills=L.SKILLS, actions=L.ACTIONS,
