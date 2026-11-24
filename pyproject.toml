@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genesis-universe"
+version = "0.1.0"
+description = "GENESIS: an artificial evolving universe - artificial life, evolution, learning and emergent civilization"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "fastapi>=0.100", "uvicorn>=0.22", "websockets>=11"]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "httpx>=0.24"]
+
+[project.scripts]
+genesis = "genesis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["genesis*"]
+
+[tool.setuptools.package-data]
+genesis = ["web/*", "web/vendor/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

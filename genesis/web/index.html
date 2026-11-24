@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GENESIS Observer</title>
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">
+{ "imports": { "three": "/static/vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="viewport">
+    <canvas id="scene"></canvas>
+    <div id="topbar">
+      <div class="brand">GENESIS</div>
+      <div id="clock">—</div>
+      <div class="ctrl">
+        <button id="btn-play" title="Play / pause">▶</button>
+        <button id="btn-step" title="Advance one hour">+1h</button>
+        <select id="scale" title="Time scale (real second → virtual time)">
+          <option value="minute">1 s = 1 minute</option>
+          <option value="hour">1 s = 1 hour</option>
+          <option value="day" selected>1 s = 1 day</option>
+          <option value="week">1 s = 1 week</option>
+          <option value="year">1 s = 1 year</option>
+          <option value="max">max speed</option>
+        </select>
+        <span id="rate" class="muted"></span>
+      </div>
+    </div>
+    <div id="layers">
+      <div class="label">Layer</div>
+      <label><input type="radio" name="layer" value="surface" checked> Surface</label>
+      <label><input type="radio" name="layer" value="plants"> Plant biomass</label>
+      <label><input type="radio" name="layer" value="temperature"> Temperature</label>
+      <label><input type="radio" name="layer" value="moisture"> Moisture</label>
+      <label><input type="radio" name="layer" value="pathogens"> Microbes <span class="hid" data-layer="microscopic">hidden</span></label>
+      <label><input type="radio" name="layer" value="ore"> Ore <span class="hid" data-layer="subterranean">hidden</span></label>
+      <label><input type="checkbox" id="show-clouds" checked> Clouds</label>
+      <label><input type="checkbox" id="color-groups"> Colour by group</label>
+      <div class="label" style="margin-top:8px">Scale</div>
+      <label><input type="checkbox" id="micro-mode"> Microscope click</label>
+    </div>
+    <div id="tooltip"></div>
+    <div id="micro" class="hidden">
+      <div class="micro-head"><b>Microscopic view</b> <span id="micro-info"></span><button id="micro-close">×</button></div>
+      <canvas id="micro-canvas" width="420" height="420"></canvas>
+      <div id="micro-note" class="muted small"></div>
+    </div>
+  </div>
+  <aside id="side">
+    <nav id="tabs">
+      <button data-tab="overview" class="active">Overview</button>
+      <button data-tab="organism">Organism</button>
+      <button data-tab="evolution">Evolution</button>
+      <button data-tab="civ">Civilization</button>
+      <button data-tab="history">History</button>
+    </nav>
+    <section id="tab-overview" class="tab active">
+      <div class="kpis" id="kpis"></div>
+      <h3>Population</h3><canvas class="chart" id="ch-pop" height="110"></canvas>
+      <h3>Mean traits</h3><canvas class="chart" id="ch-traits" height="120"></canvas>
+      <div class="legend" id="lg-traits"></div>
+      <h3>Causes of death</h3><div id="deaths" class="bars"></div>
+      <h3>Behaviour (share of actions)</h3><div id="actions" class="bars"></div>
+      <h3>New world</h3>
+      <div class="form">
+        <label>Seed <input id="nw-seed" type="number" value="1"></label>
+        <label>Scenario <select id="nw-scn"><option value="primordial">primordial (simple first organisms)</option><option value="advanced">advanced (social, larger brains)</option></select></label>
+        <label>Moral education <select id="nw-fw"></select></label>
+        <button id="nw-go">Create universe</button>
+      </div>
+      <h3>Save / load</h3>
+      <div class="form row"><input id="save-path" value="genesis_save.pkl"><button id="btn-save">Save</button><button id="btn-load">Load</button></div>
+    </section>
+    <section id="tab-organism" class="tab">
+      <p class="muted" id="org-empty">Click an organism in the world (or a name anywhere) to inspect it.</p>
+      <div id="org"></div>
+    </section>
+    <section id="tab-evolution" class="tab">
+      <h3>Species alive</h3><canvas class="chart" id="ch-species" height="90"></canvas>
+      <div id="species"></div>
+    </section>
+    <section id="tab-civ" class="tab">
+      <h3>Reality layers known to inhabitants</h3><div id="layers-known"></div>
+      <h3>Skills prevalence</h3><div id="skills" class="bars"></div>
+      <h3>Groups</h3><div id="groups"></div>
+      <h3>Settlements</h3><div id="settlements"></div>
+      <h3>Norms (population mean)</h3><div id="norms" class="bars"></div>
+      <h3>Beliefs</h3><div id="beliefs" class="bars"></div>
+    </section>
+    <section id="tab-history" class="tab">
+      <h3>Rewind</h3>
+      <div class="form row"><input id="rw-range" type="range" min="0" max="0" value="0"><span id="rw-label"></span><button id="rw-go">Rewind</button></div>
+      <p class="muted small">History is replayed deterministically from the nearest snapshot; the abandoned future is erased.</p>
+      <h3>Emergent firsts</h3><ol id="firsts" class="timeline"></ol>
+      <h3>Recent events</h3><ol id="events" class="timeline"></ol>
+    </section>
+  </aside>
+</div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
