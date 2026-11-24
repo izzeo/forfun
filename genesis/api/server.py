@@ -62,6 +62,14 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
         return state["runner"].sim
 
     # ------------------------------------------------------------------ static
+    @app.middleware("http")
+    async def no_cache_ui(request, call_next):
+        # the UI changes with the code; never let the browser serve a stale copy
+        resp = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     if WEB.exists():
         app.mount("/static", StaticFiles(directory=str(WEB)), name="static")
 
