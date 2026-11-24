@@ -300,7 +300,8 @@ class Civilization:
                 sim.history.event(sim, "polity_change", gr.get("leader", -1), -1, *gr["centroid"],
                                   dict(group=gid, from_=gr["polity"], to=pol))
                 gr["polity"] = pol
-                sim.analytics.first(sim, "polity:" + pol, f"First {pol} emerged ({gr['name']})")
+                if pol != "band":
+                    sim.analytics.first(sim, "polity:" + pol, f"First {pol} emerged ({gr['name']})")
 
     def _update_conflicts(self, sim) -> None:
         pop = sim.pop
