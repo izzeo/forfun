@@ -295,6 +295,24 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
         return dict(ok=True, paused=r.paused, scale=r.scale, tick=S().clock.tick)
 
     # ------------------------------------------------------------------ live stream
+    def build_frame(k: int, last_version: int) -> dict:
+        s, r = S(), R()
+        with r.lock:
+            frame = dict(type="frame", clock=s.clock.info(), minute=int(r.fractional_hour() * 60),
+                         population=len(s.pop), agents=compact_agents(s), paused=r.paused,
+                         effective_rate=round(r.effective_rate, 2), storms=s.world.storms,
+                         version=r.version)
+            if k % 8 == 0 or r.version != last_version:
+                w = s.world
+                frame["fields"] = dict(
+                    plants=np.clip(w.biomass * 200, 0, 255).astype(np.uint8).ravel().tolist(),
+                    clouds=np.clip(w.clouds * 255, 0, 255).astype(np.uint8).ravel().tolist(),
+                    struct=w.struct.ravel().tolist(),
+                    fire=np.clip(w.fire * 255, 0, 255).astype(np.uint8).ravel().tolist(),
+                    ptype=w.ptype.ravel().tolist())
+                frame["sun"] = s.clock.sun_elevation()
+        return frame
+
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
         await sock.accept()
@@ -302,22 +320,9 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
         last_version = -1
         try:
             while True:
-                s, r = S(), R()
-                with r.lock:
-                    frame = dict(type="frame", clock=s.clock.info(), minute=int(r.fractional_hour() * 60),
-                                 population=len(s.pop), agents=compact_agents(s), paused=r.paused,
-                                 effective_rate=round(r.effective_rate, 2), storms=s.world.storms,
-                                 version=r.version)
-                    if k % 8 == 0 or r.version != last_version:
-                        w = s.world
-                        frame["fields"] = dict(
-                            plants=np.clip(w.biomass * 200, 0, 255).astype(np.uint8).ravel().tolist(),
-                            clouds=np.clip(w.clouds * 255, 0, 255).astype(np.uint8).ravel().tolist(),
-                            struct=w.struct.ravel().tolist(),
-                            fire=np.clip(w.fire * 255, 0, 255).astype(np.uint8).ravel().tolist(),
-                            ptype=w.ptype.ravel().tolist())
-                        frame["sun"] = s.clock.sun_elevation()
-                        last_version = r.version
+                # built in a worker thread: waiting for the simulation lock must never block the server
+                frame = await asyncio.to_thread(build_frame, k, last_version)
+                last_version = frame["version"]
                 await sock.send_json(frame)
                 k += 1
                 await asyncio.sleep(0.25)
