@@ -54,6 +54,24 @@ class Analytics:
             talkers = [int(a) for a in pop.id if int(a) in pop.lexicon]
             coh, _ = language.coherence(pop, talkers[:600])
             row["language_coherence"] = round(coh, 3)
+            # reproduction, kinship, disease and property
+            row["sexes"] = dict(female=int((pop.sex == 0).sum()), male=int((pop.sex == 1).sum()),
+                                pregnant=int((pop.pregnant_until >= 0).sum()))
+            row["kinship"] = dict(mean_inbreeding=round(float(pop.inbreeding.mean()), 4),
+                                  kin_aversion=round(float(pop.kin_aversion.mean()), 3))
+            infected = pop.infection > 0.05
+            row["disease"] = dict(infected_share=round(float(infected.mean()), 4),
+                                  mean_strain_virulence=round(float(pop.strain[infected].mean()), 3) if infected.any() else None)
+            wealth = pop.inventory[:, L.R["food"]].astype(np.float64).copy()
+            own = w.struct_owner[w.store_food > 0]
+            food = w.store_food[w.store_food > 0]
+            id2i = {int(a): k for k, a in enumerate(pop.id)}
+            for o, f in zip(own.tolist(), food.tolist()):
+                k = id2i.get(int(o))
+                if k is not None:
+                    wealth[k] += f
+            ws = np.sort(wealth)
+            row["gini_wealth"] = round(float(1 - 2 * np.sum(np.cumsum(ws) / max(ws.sum(), 1e-9)) / n + 1 / n), 3) if ws.sum() > 0 else 0.0
             from ..intelligence import selfmodel
             row["self_model"] = dict(mean_agency=round(float(pop.agency.mean()), 3),
                                      helpless_share=round(float((pop.agency < selfmodel.HELPLESS).mean()), 4),

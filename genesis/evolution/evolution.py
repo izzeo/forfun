@@ -19,7 +19,45 @@ A = L.A
 SPECIES_THRESHOLD = 0.14
 
 
+def gestation_hours(g_row) -> float:
+    """Larger bodies and bigger brains take longer to grow in the womb."""
+    return 24.0 * (2.0 + 6.0 * float(g_row[GN.T["size"]]) + 5.0 * float(g_row[GN.T["brain"]]))
+
+
+def relatedness(pop, i: int, j: int) -> float:
+    """Coefficient of relatedness from the recorded pedigree (parents and grandparents)."""
+    ii, jj = int(pop.id[i]), int(pop.id[j])
+    pi = {int(pop.parent_a[i]), int(pop.parent_b[i])} - {-1}
+    pj = {int(pop.parent_a[j]), int(pop.parent_b[j])} - {-1}
+    if jj in pi or ii in pj:
+        return 0.5                                   # parent and child
+    shared_parents = len(pi & pj)
+    if shared_parents >= 2:
+        return 0.5                                   # full siblings
+    gi = set(int(x) for x in pop.grand[i]) - {-1}
+    gj = set(int(x) for x in pop.grand[j]) - {-1}
+    if jj in gi or ii in gj:
+        return 0.25                                  # grandparent
+    if shared_parents == 1:
+        return 0.25                                  # half siblings
+    if (pi & gj) or (pj & gi):
+        return 0.25                                  # aunt/uncle and niece/nephew
+    shared_g = len(gi & gj)
+    if shared_g:
+        return 0.0625 * shared_g                     # cousins (first cousins share two grandparents)
+    return 0.0
+
+
+def mate_appeal(pop, male: int, female: int) -> float:
+    """Female choice: a healthy, respected male that looks like her own kind is preferred."""
+    g = pop.genome
+    q = float(pop.health[male]) * (0.6 + 0.4 * min(1.0, float(pop.prestige[male])))
+    looks = 1.0 - 0.8 * abs(float(g[male, GN.T["hue"]]) - float(g[female, GN.T["hue"]]))
+    return float(np.clip(q * looks, 0.0, 1.0))
+
+
 def reproduce(sim, pc, act) -> int:
+    """Mating (conception -> pregnancy) or, for primitive organisms, budding."""
     pop, rng, tick = sim.pop, sim.rng, sim.clock.tick
     n = len(pop)
     if n == 0 or n >= sim.cfg.max_population:
@@ -27,7 +65,7 @@ def reproduce(sim, pc, act) -> int:
     g = pop.genome
     cap = P.capacity(g)
     mature = life_stage(pop) >= 3
-    ready = mature & (pop.energy > (0.3 + 0.35 * g[:, GN.T["repro_thresh"]]) * cap)
+    ready = mature & (pop.energy > (0.3 + 0.35 * g[:, GN.T["repro_thresh"]]) * cap) & (pop.pregnant_until < 0)
     cooldown = (tick - pop.last_repro) > 24 * (1 + 4 * g[:, GN.T["size"]] + 3 * g[:, GN.T["parental"]])
     want = (act == A["mate"]) & ready & cooldown
     if not want.any():
@@ -35,75 +73,150 @@ def reproduce(sim, pc, act) -> int:
     sexual_pref = g[:, GN.T["sexual"]]
     mates = pc.mate_idx
     used = np.zeros(n, bool)
-    pa, pb = [], []
+    buds = []
+    conceived = 0
     for i in np.nonzero(want)[0]:
         if used[i]:
             continue
-        j = int(mates[i])
-        sexual = rng.random() < sexual_pref[i]
-        if sexual:
-            if j < 0 or used[j] or not ready[j] or not cooldown[j] or pc.mate_dist[i] > 1.6:
+        if rng.random() < sexual_pref[i]:
+            j = int(mates[i])
+            if j < 0 or used[j] or not ready[j] or not cooldown[j] or pc.mate_dist[i] > 1.6 or pop.sex[i] == pop.sex[j]:
                 continue
-            # mate choice: the partner must not dislike the suitor
-            aff = sim.social.affinity(int(pop.id[j]), int(pop.id[i]))
-            if aff < -0.2 or rng.random() > (0.5 + 0.5 * sexual_pref[j]):
+            if sim.social.affinity(int(pop.id[j]), int(pop.id[i])) < -0.2:
                 continue
+            r = relatedness(pop, i, j)
+            if r > 0 and rng.random() < max(pop.kin_aversion[i], pop.kin_aversion[j]):
+                continue                             # instinctive reluctance towards relatives
+            female, male = (i, j) if pop.sex[i] == 0 else (j, i)
+            if rng.random() > mate_appeal(pop, male, female) * (0.5 + 0.5 * sexual_pref[female]):
+                continue                             # she declines
             used[i] = used[j] = True
-            pa.append(i); pb.append(j)
+            conceive(sim, female, male, r)
+            conceived += 1
         else:
             used[i] = True
-            pa.append(i); pb.append(-1)
-    if not pa:
+            buds.append(i)
+    if buds:
+        if n + len(buds) > sim.cfg.max_population:
+            buds = buds[: max(0, sim.cfg.max_population - n)]
+        if buds:
+            make_offspring(sim, np.array(buds), np.full(len(buds), -1))
+    return len(buds) + conceived
+
+
+def conceive(sim, female: int, male: int, r: float) -> None:
+    pop, tick = sim.pop, sim.clock.tick
+    fid, mid = int(pop.id[female]), int(pop.id[male])
+    pop.pregnant_until[female] = tick + int(gestation_hours(pop.genome[female]))
+    pop.last_repro[female] = tick
+    pop.last_repro[male] = tick
+    pop.pending[fid] = dict(father=mid, g=pop.genome[male].copy(), w=pop.weights[male].copy(),
+                            gen=int(pop.generation[male]), r=float(r), kin=float(pop.kin_aversion[male]),
+                            parents=(int(pop.parent_a[male]), int(pop.parent_b[male])), conceived=tick)
+    MEM.record(pop, np.array([female, male]), MEM.M["mated"], 0.6, np.array([mid, fid]), tick)
+    sim.social.bond(fid, mid, 0.25)
+    pop.partner[female] = mid
+    pop.partner[male] = fid
+    sim.stats_counter["conceptions"] += 1
+    sim.analytics.first(sim, "pregnancy", "A female carried offspring through pregnancy")
+
+
+def deliver(sim) -> int:
+    """Births at the end of pregnancy; miscarriage if the mother is starving or very ill."""
+    pop, tick = sim.pop, sim.clock.tick
+    preg = np.nonzero(pop.pregnant_until >= 0)[0]
+    if len(preg) == 0:
         return 0
-    if n + len(pa) > sim.cfg.max_population:
-        k = sim.cfg.max_population - n
-        pa, pb = pa[:k], pb[:k]
-    make_offspring(sim, np.array(pa), np.array(pb))
-    return len(pa)
+    cap = P.capacity(pop.genome[preg])
+    lost = preg[(pop.energy[preg] < 0.08 * cap) | (pop.health[preg] < 0.15)]
+    for k in lost:
+        pop.pending.pop(int(pop.id[k]), None)
+        pop.pregnant_until[k] = -1
+        pop.emotion[k, 3] = min(1.0, pop.emotion[k, 3] + 0.6)
+        MEM.consolidate(pop, np.array([k]), MEM.M["lost_kin"], -0.9, -1, tick, detail="lost an unborn child", force=True)
+        sim.stats_counter["miscarriages"] += 1
+        sim.history.event(sim, "miscarriage", int(pop.id[k]), -1, pop.x[k], pop.y[k], {})
+    due = [k for k in preg if pop.pregnant_until[k] >= 0 and pop.pregnant_until[k] <= tick and int(pop.id[k]) in pop.pending]
+    if not due or len(pop) >= sim.cfg.max_population:
+        for k in due:
+            pop.pregnant_until[k] = tick + 24        # labour delayed
+        return 0
+    moms = np.array(due)
+    info = [pop.pending.pop(int(pop.id[k])) for k in due]
+    pop.pregnant_until[moms] = -1
+    id2i = {int(a): k for k, a in enumerate(pop.id)}
+    fathers = np.array([id2i.get(d["father"], -1) for d in info])
+    ids = make_offspring(sim, moms, fathers, father_g=np.stack([d["g"] for d in info]),
+                         father_w=np.stack([d["w"] for d in info]), father_info=info)
+    return len(ids)
 
 
-def make_offspring(sim, pa: np.ndarray, pb: np.ndarray) -> np.ndarray:
+def make_offspring(sim, pa: np.ndarray, pb: np.ndarray, father_g=None, father_w=None, father_info=None) -> np.ndarray:
+    """Create offspring of mothers ``pa``. ``father_g`` given -> sexual (father may be dead: pb == -1);
+    otherwise asexual budding."""
     pop, rng, tick, w = sim.pop, sim.rng, sim.clock.tick, sim.world
     m = len(pa)
     g = pop.genome
-    sex = pb >= 0
-    pbb = np.where(sex, pb, pa)
+    sexual = np.full(m, father_g is not None)
+    fg = father_g if father_g is not None else g[pa]
+    fw = father_w if father_w is not None else pop.weights[pa]
+    pb = np.asarray(pb)
+    alive_f = pb >= 0
+    pbb = np.where(alive_f, pb, pa)                  # for cultural traits: living father, else the mother
     # crossover (uniform) then mutation
     mask = rng.random((m, GN.G)) < 0.5
-    child_g = np.where(mask & sex[:, None], g[pbb], g[pa])
-    sig = (P.mutation_sigma(g[pa]) + P.mutation_sigma(g[pbb])) / 2
+    child_g = np.where(mask & sexual[:, None], fg, g[pa])
+    sig = (P.mutation_sigma(g[pa]) + P.mutation_sigma(fg)) / 2
     child_g = child_g + rng.normal(0, 1, child_g.shape) * sig[:, None]
-    # rare larger mutations
-    big = rng.random(child_g.shape) < 0.002
+    big = rng.random(child_g.shape) < 0.002          # rare larger mutations
     child_g = np.where(big, rng.random(child_g.shape), child_g)
     child_g = np.clip(child_g, 0, 1).astype(np.float32)
     wmask = rng.random((m, GN.N_W)) < 0.5
-    child_w = np.where(wmask & sex[:, None], pop.weights[pbb], pop.weights[pa])
+    child_w = np.where(wmask & sexual[:, None], fw, pop.weights[pa])
     child_w = (child_w + rng.normal(0, 1, child_w.shape) * (sig[:, None] * 2.0)).astype(np.float32)
 
-    # energy investment (conserved): body + initial store come from the parents
-    invest = 0.25 + 0.35 * (g[pa, GN.T["parental"]] + g[pbb, GN.T["parental"]]) / 2
-    body = P.body(child_g) * 0.3        # newborns are small; the rest of the body grows later
+    # energy investment (conserved): the mother pays for the newborn's body and first energy
+    invest = 0.25 + 0.35 * (g[pa, GN.T["parental"]] + fg[:, GN.T["parental"]]) / 2
+    body = P.body(child_g) * 0.3                     # newborns are small; the rest of the body grows later
     cap_c = P.capacity(child_g)
     e_child = np.minimum(invest * pop.energy[pa], cap_c * 0.6)
     total = body + e_child
     overhead = 0.1 * total
-    share_a = np.where(sex, 0.5, 1.0)
-    cost_a = (total + overhead) * share_a
-    cost_b = (total + overhead) * (1 - share_a)
-    ok = (pop.energy[pa] > cost_a + 0.05) & (np.where(sex, pop.energy[pbb] > cost_b + 0.05, True))
-    pa, pb, pbb, sex = pa[ok], pb[ok], pbb[ok], sex[ok]
-    child_g, child_w, e_child, cost_a, cost_b, overhead = child_g[ok], child_w[ok], e_child[ok], cost_a[ok], cost_b[ok], overhead[ok]
+    cost = total + overhead
+    ok = pop.energy[pa] > cost + 0.05
+    if not ok.all() and father_info is not None:
+        # too weak to give birth now: the pregnancy fails rather than conjuring energy
+        sim.stats_counter["miscarriages"] += int((~ok).sum())
+    pa, pb, pbb, sexual, alive_f = pa[ok], pb[ok], pbb[ok], sexual[ok], alive_f[ok]
+    fg = fg[ok]
+    child_g, child_w, e_child, cost, overhead = child_g[ok], child_w[ok], e_child[ok], cost[ok], overhead[ok]
+    if father_info is not None:
+        father_info = [d for d, o in zip(father_info, ok) if o]
     m = len(pa)
     if m == 0:
         return np.zeros(0, np.int64)
-    pop.energy[pa] -= cost_a
-    np.subtract.at(pop.energy, pbb[sex], cost_b[sex])
+    pop.energy[pa] -= cost
     w.ledger.heat_out += float(overhead.sum())
     pop.last_repro[pa] = tick
-    pop.last_repro[pbb[sex]] = tick
     np.add.at(pop.children, pa, 1)
-    np.add.at(pop.children, pbb[sex], 1)
+    np.add.at(pop.children, pbb[alive_f], 1)
+
+    # kinship bookkeeping and inbreeding
+    if father_info is not None:
+        r = np.array([d["r"] for d in father_info], np.float32)
+        f_kin = np.array([d["kin"] for d in father_info], np.float32)
+        f_gen = np.array([d["gen"] for d in father_info])
+        f_par = np.array([d["parents"] for d in father_info], np.int64)
+        f_ids = np.array([d["father"] for d in father_info], np.int64)
+    else:
+        r = np.zeros(m, np.float32)
+        f_kin = pop.kin_aversion[pa]
+        f_gen = pop.generation[pa]
+        f_par = np.stack([pop.parent_a[pa], pop.parent_b[pa]], axis=1)
+        f_ids = np.full(m, -1, np.int64)
+    F = r / 2
+    grand = np.concatenate([np.stack([pop.parent_a[pa], pop.parent_b[pa]], axis=1), f_par], axis=1)
+    kin_av = np.clip((pop.kin_aversion[pa] + f_kin) / 2 + rng.normal(0, 0.05, m), 0, 1)
 
     # cultural & psychological inheritance (not genetic): norms, beliefs, personality noise
     norms = (pop.norms[pa] + pop.norms[pbb]) / 2 + rng.normal(0, 0.03, (m, 7))
@@ -112,20 +225,21 @@ def make_offspring(sim, pa: np.ndarray, pb: np.ndarray) -> np.ndarray:
                      1 - child_g[:, GN.T["aggression"]], child_g[:, GN.T["fear_sens"]]], axis=1)
     pers = np.clip(pers + rng.normal(0, 0.12, pers.shape), 0, 1)
     fv = child_g[:, GN.FOOD_PREF0:GN.FOOD_PREF0 + L.N_PLANTS] * 1.0
-    gen = np.maximum(pop.generation[pa], pop.generation[pbb]) + 1
+    gen = np.maximum(pop.generation[pa], f_gen) + 1
     ids = pop.add(
         m,
         x=np.clip(pop.x[pa] + rng.normal(0, 0.3, m), 0, w.W - 1e-3),
         y=np.clip(pop.y[pa] + rng.normal(0, 0.3, m), 0, w.H - 1e-3),
         heading=rng.uniform(0, 2 * np.pi, m), energy=e_child, health=1.0, hydration=1.0,
-        max_age=P.max_age(child_g) * rng.uniform(0.85, 1.15, m), generation=gen,
-        parent_a=pop.id[pa], parent_b=np.where(sex, pop.id[pbb], -1), birth_tick=tick,
+        max_age=P.max_age(child_g) * rng.uniform(0.85, 1.15, m) * (1 - F), generation=gen,
+        parent_a=pop.id[pa], parent_b=f_ids, birth_tick=tick,
         species=pop.species[pa], group=pop.group[pa], genome=child_g, weights=child_w, growth=0.3,
         food_value=fv, personality=pers, norms=np.clip(norms, -1, 1), beliefs=beliefs,
-        immunity=0.5 * (pop.immunity[pa] + pop.immunity[pbb]) * 0.3,
-        hue_fear=0.3 * pop.hue_fear[pa],  # weak innate-like transmission via early exposure
-        # upbringing: confident parents raise somewhat more confident young, and vice versa
+        immunity=0.5 * (pop.immunity[pa] + pop.immunity[pbb]) * 0.3 * (1 - 2 * F),
+        immune_strain=pop.immune_strain[pa],      # maternal antibodies
+        hue_fear=0.3 * pop.hue_fear[pa],          # weak innate-like transmission via early exposure
         agency=np.clip(0.6 + 0.3 * ((pop.agency[pa] + pop.agency[pbb]) / 2 - 0.6), 0, 1),
+        sex=(rng.random(m) < 0.5).astype(np.int8), grand=grand, inbreeding=F, kin_aversion=kin_av,
     )
     sim.moral.educate_newborn(sim, ids, pa)
     n0 = len(pop) - m
@@ -133,23 +247,20 @@ def make_offspring(sim, pa: np.ndarray, pb: np.ndarray) -> np.ndarray:
     MEM.record(pop, new_idx, MEM.M["born"], 1.0, pop.id[pa], tick)
     MEM.consolidate(pop, new_idx, MEM.M["born"], 1.0, pop.id[pa], tick, detail="was born", force=True)
     MEM.record(pop, pa, MEM.M["gave_birth"], 1.0, ids, tick)
-    MEM.consolidate(pop, pa, MEM.M["gave_birth"], 0.8, ids, tick, detail="had a child")
+    MEM.consolidate(pop, pa, MEM.M["gave_birth"], 0.8, ids, tick, detail="gave birth")
     for k in range(m):
         cid = int(ids[k])
         pop.names[cid] = make_name(cid)
-        # parents and child are bonded from the start
-        a = int(pop.id[pa[k]])
-        sim.social.bond(a, cid, 0.6)
-        if sex[k]:
-            b = int(pop.id[pbb[k]])
-            sim.social.bond(b, cid, 0.6)
-            sim.social.bond(a, b, 0.3)
-            pop.partner[pa[k]] = b
-            pop.partner[pbb[k]] = a
+        sim.social.bond(int(pop.id[pa[k]]), cid, 0.6)   # mother and child are bonded from the start
+        if alive_f[k]:
+            sim.social.bond(int(pop.id[pbb[k]]), cid, 0.4)
+    if (F > 0).any():
+        sim.stats_counter["inbred_births"] += int((F > 0).sum())
+        sim.analytics.first(sim, "inbreeding", "A child was born to related parents (inbreeding)")
     sim.history.births(sim, new_idx)
     sim.stats_counter["births"] += m
-    if sex.any():
-        sim.analytics.first(sim, "sexual_reproduction", "Two organisms produced offspring together")
+    if sexual.any():
+        sim.analytics.first(sim, "sexual_reproduction", "A child was born to two parents")
     return ids
 
 

@@ -154,8 +154,10 @@ def perceive(sim) -> Percept:
     prey_idx, prey_dist = nearest_by(I[preym], J[preym], D[preym], n)
 
     mature = pop.age >= P.maturity(g) * pop.max_age
-    ready = mature & (pop.energy > (0.3 + 0.35 * g[:, GN.T["repro_thresh"]]) * P.capacity(g))
-    matem = ready[I] & mature[J] & (gd < 0.12) & ~kin
+    ready = mature & (pop.energy > (0.3 + 0.35 * g[:, GN.T["repro_thresh"]]) * P.capacity(g)) & (pop.pregnant_until < 0)
+    # a mate is a mature member of the other sex of one's own kind (kin are not excluded here:
+    # avoiding relatives is a heritable instinct that evolution may or may not strengthen)
+    matem = ready[I] & mature[J] & (gd < 0.12) & (pop.sex[I] != pop.sex[J]) & (pop.pregnant_until[J] < 0)
     mate_idx, mate_dist = nearest_by(I[matem], J[matem], D[matem], n)
     fm = kin | same_group
     friend_idx, friend_dist = nearest_by(I[fm], J[fm], D[fm], n)

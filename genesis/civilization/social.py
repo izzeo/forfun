@@ -60,6 +60,9 @@ class Social:
             close = np.hypot(pop.x[par] - pop.x[young], pop.y[par] - pop.y[young]) < 1.6
             surplus = pop.energy[par] - 0.35 * cap[par]
             care = (0.25 + 0.5 * g[par, GN.T["parental"]] + 0.25 * np.clip(pop.norms[par, 3], 0, 1))
+            # a mother nursing her infant (lactation) gives far more than anyone else can
+            nursing_mother = (pop.parent_a[young] == pop.id[par]) & (pop.sex[par] == 0) & (st[young] == 0)
+            care = care * np.where(nursing_mother, 2.0, 1.0)
             need = (pop.energy[young] < 0.6 * cap[young])
             amt = np.where(close & need & (surplus > 0), np.minimum(0.02 * care * cap[par], surplus), 0).astype(np.float32)
             np.subtract.at(pop.energy, par, amt)

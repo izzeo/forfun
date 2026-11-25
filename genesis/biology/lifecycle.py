@@ -40,7 +40,10 @@ def metabolize(sim, pc, act, move_cost, dmg):
     dmg[:, C["exposure"]] += 0.002 * excess
 
     # ---- energy budget -------------------------------------------------------
-    cost = P.basal(g) * np.where(resting, 0.7, 1.0) + move_cost + temp_cost
+    pregnant = pop.pregnant_until >= 0
+    # pregnancy costs the mother extra energy; inbreeding depression raises basic costs
+    cost = (P.basal(g) * np.where(resting, 0.7, 1.0) * (1 + 0.35 * pregnant) * (1 + 1.5 * pop.inbreeding)
+            + move_cost + temp_cost)
     paid = np.minimum(cost, pop.energy)
     pop.energy -= paid
     w.ledger.heat_out += float(paid.sum())
@@ -83,29 +86,57 @@ def metabolize(sim, pc, act, move_cost, dmg):
             sim.culture.unexplained_harm(sim, np.nonzero(hit)[0], 0.5, "storm")
 
     # ---- disease (hidden microscopic layer acting causally) ---------------
+    # Each infection is a strain with its own virulence. Strains mutate when passed from host to
+    # host; immune memory protects best against strains similar to those already met.
     P_here = w.pathogens[cy, cx]
     vir = w.virulence[cy, cx]
     hygiene = sim.civ.hygiene(sim)
-    expo = rng.random(n) < 0.015 * P_here * (1 - pop.immunity) * (1 - hygiene)
-    pop.infection[expo] += 0.15 * vir[expo]
+
+    def protection(idx, strain):
+        return pop.immunity[idx] * np.exp(-np.abs(strain - pop.immune_strain[idx]) / 0.15)
+
+    healthy_now = pop.infection <= 0.01
+    expo = healthy_now & (rng.random(n) < 0.015 * P_here * (1 - protection(np.arange(n), vir)) * (1 - hygiene))
+    if expo.any():
+        ei = np.nonzero(expo)[0]
+        pop.strain[ei] = np.clip(vir[ei] + rng.normal(0, 0.03, len(ei)), 0.05, 1.0)
+        pop.infection[ei] += 0.15 * pop.strain[ei]
     if n > 1:
         I, J, D = pc.pairs
-        close = (D < 1.2) & (pop.infection[J] > 0.1)
+        close = (D < 1.2) & (pop.infection[J] > 0.1) & (pop.infection[I] <= 0.01)
         if close.any():
-            tr = rng.random(int(close.sum())) < 0.01 * pop.infection[J[close]] * (1 - pop.immunity[I[close]]) * (1 - hygiene[I[close]])
-            np.add.at(pop.infection, I[close][tr], 0.1)
+            Ic, Jc = I[close], J[close]
+            s_j = pop.strain[Jc]
+            p_tr = 0.012 * pop.infection[Jc] * (0.5 + s_j) * (1 - protection(Ic, s_j)) * (1 - hygiene[Ic])
+            tr = rng.random(len(Ic)) < p_tr
+            Ic, s_j = Ic[tr], s_j[tr]
+            if len(Ic):
+                _, first = np.unique(Ic, return_index=True)          # one new infection per host
+                Ic, s_j = Ic[first], s_j[first]
+                pop.strain[Ic] = np.clip(s_j + rng.normal(0, 0.04, len(Ic)), 0.05, 1.0)   # mutation
+                pop.infection[Ic] += 0.1
+                sim.stats_counter["host_transmissions"] += len(Ic)
     inf = pop.infection > 0
     if inf.any():
         ii = np.nonzero(inf)[0]
-        pop.infection[ii] += (0.004 * vir[ii] - 0.008 * (pop.immunity[ii] + 0.3) - 0.002 * resting[ii]).astype(np.float32)
+        sv = pop.strain[ii]
+        prot = protection(ii, sv)
+        pop.infection[ii] += (0.004 * sv - 0.008 * (prot + 0.3) - 0.002 * resting[ii]).astype(np.float32)
         pop.immunity[ii] = np.minimum(1, pop.immunity[ii] + 0.006 * pop.infection[ii])
-        dmg[ii, C["disease"]] += 0.012 * np.clip(pop.infection[ii], 0, 1) * vir[ii]
-        np.add.at(w.pathogens, (cy[ii], cx[ii]), 0.003 * np.clip(pop.infection[ii], 0, 1))
+        pop.immune_strain[ii] += (0.05 * (sv - pop.immune_strain[ii])).astype(np.float32)
+        dmg[ii, C["disease"]] += 0.012 * np.clip(pop.infection[ii], 0, 1) * sv
+        shed = 0.003 * np.clip(pop.infection[ii], 0, 1) * (0.5 + sv)   # virulent strains shed more
+        np.add.at(w.pathogens, (cy[ii], cx[ii]), shed)
+        np.add.at(w.virulence, (cy[ii], cx[ii]), (0.05 * (sv - vir[ii])).astype(np.float32))
         newly_ill = ii[(pop.infection[ii] > 0.3) & (pop.infection[ii] < 0.32)]
         if len(newly_ill):
             MEM.consolidate(pop, newly_ill, MEM.M["ill"], -0.7, 0, tick, detail="fell ill")
             sim.culture.unexplained_harm(sim, newly_ill, 0.6, "disease")
+        # crowd disease: an outbreak sustained by host-to-host spread
+        if len(ii) > 0.25 * n and n > 40:
+            sim.analytics.first(sim, "epidemic", f"An epidemic: {len(ii)} of {n} organisms infected at once")
     np.clip(pop.infection, 0, 1.5, out=pop.infection)
+    np.clip(w.virulence, 0.05, 1.0, out=w.virulence)
     pop.immunity *= np.float32(0.9998)
 
     # ---- apply damage, heal ------------------------------------------------
@@ -119,7 +150,7 @@ def metabolize(sim, pc, act, move_cost, dmg):
 
     # ---- ageing (Gompertz hazard) ---------------------------------------
     pop.age += 1
-    hazard = 3e-6 * np.exp(9.0 * agefrac)
+    hazard = 3e-6 * np.exp(9.0 * agefrac) * (1 + 8 * pop.inbreeding)
     old = (rng.random(n) < hazard) | (agefrac > 1.5)
 
     # ---- determine deaths and causes -------------------------------------

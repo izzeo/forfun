@@ -75,6 +75,15 @@ FIELDS = {
     "self_eff": (np.float32, (5,), 0.5),       # belief in own success: fight, forage, explore, craft, social
     "agency": (np.float32, (), 0.6),           # general sense of control (low = learned helplessness)
     "was_helpless": (np.bool_, (), False),
+    # sexes, pregnancy, kinship (see evolution.evolution)
+    "sex": (np.int8, (), -1),                  # 0 female, 1 male (-1: not yet assigned, old saves)
+    "pregnant_until": (np.int64, (), -1),      # tick of birth, -1 if not pregnant
+    "grand": (np.int64, (4,), -1),             # ids of the four grandparents
+    "inbreeding": (np.float32, (), 0.0),       # inbreeding coefficient F of this organism
+    "kin_aversion": (np.float32, (), 0.3),     # heritable reluctance to mate with relatives
+    # disease strains (see biology.lifecycle)
+    "strain": (np.float32, (), 0.5),           # virulence of the strain currently infecting it
+    "immune_strain": (np.float32, (), 0.5),    # strain its immune memory is tuned to
 }
 
 EMO = {"fear": 0, "joy": 1, "anger": 2, "sadness": 3, "affection": 4}
@@ -90,6 +99,7 @@ class Population:
         self.relations: dict[int, dict[int, float]] = {}
         self.lexicon: dict[int, dict[int, dict[str, float]]] = {}
         self.names: dict[int, str] = {}
+        self.pending: dict[int, dict] = {}     # pregnancies: mother id -> father's contribution
 
     def __len__(self) -> int:
         return len(self.id)
@@ -121,6 +131,7 @@ class Population:
 
     def forget(self, agent_id: int) -> None:
         """Drop sparse structures of a dead organism (its record survives in history)."""
+        self.pending.pop(agent_id, None)      # an unborn child dies with its mother
         self.ltm.pop(agent_id, None)
         self.relations.pop(agent_id, None)
         self.lexicon.pop(agent_id, None)
@@ -136,7 +147,7 @@ class Population:
     def state_dict(self) -> dict:
         d = {name: getattr(self, name) for name in FIELDS}
         d.update(next_id=self.next_id, ltm=self.ltm, relations=self.relations,
-                 lexicon=self.lexicon, names=self.names)
+                 lexicon=self.lexicon, names=self.names, pending=self.pending)
         return d
 
     def load_state(self, d: dict) -> None:
@@ -154,6 +165,7 @@ class Population:
             setattr(self, name, arr)
         self.next_id = d["next_id"]
         self.ltm, self.relations, self.lexicon, self.names = d["ltm"], d["relations"], d["lexicon"], d["names"]
+        self.pending = d.get("pending", {})
 
 
 _SYL = ["ka", "ri", "mo", "tu", "le", "sa", "no", "vi", "da", "ze", "lu", "ha", "po", "mi", "ra", "ten", "ob", "is", "ul", "an"]

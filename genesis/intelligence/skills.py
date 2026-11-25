@@ -441,4 +441,5 @@ def _build(sim, i, cy, cx, kind, hp):
     w.struct[cy, cx] = kind
     w.struct_hp[cy, cx] = hp
     w.struct_group[cy, cx] = int(sim.pop.group[i])
+    w.struct_owner[cy, cx] = int(sim.pop.id[i])
     sim.history.event(sim, "built", int(sim.pop.id[i]), -1, cx, cy, dict(structure=L.STRUCTURES[kind]))

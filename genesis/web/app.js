@@ -318,7 +318,7 @@ async function refreshState() {
   const k = [
     ['alive', state.population], ['species', L.species ?? '—'], ['generation', L.max_generation ?? 0],
     ['groups', state.civ.groups], ['settlements', state.civ.settlements], ['wars', state.civ.wars],
-    ['speakers', L.speakers ?? 0], ['language coh.', fmt(L.language_coherence)], ['ms / tick', state.ms_per_tick], ['helpless %', fmt(100 * (L.self_model?.helpless_share ?? 0), 1)], ['CO₂ ×', fmt(state.climate?.co2, 3)], ['greenhouse °C', fmt(state.climate?.greenhouse_c, 2)], ['minerals', Math.round(state.matter?.minerals ?? 0)],
+    ['speakers', L.speakers ?? 0], ['language coh.', fmt(L.language_coherence)], ['ms / tick', state.ms_per_tick], ['helpless %', fmt(100 * (L.self_model?.helpless_share ?? 0), 1)], ['infected %', fmt(100 * (L.disease?.infected_share ?? 0), 0)], ['wealth gini', fmt(L.gini_wealth)], ['CO₂ ×', fmt(state.climate?.co2, 3)], ['greenhouse °C', fmt(state.climate?.greenhouse_c, 2)], ['minerals', Math.round(state.matter?.minerals ?? 0)],
   ];
   $('#kpis').innerHTML = k.map(([a, b]) => `<div class="kpi"><b>${b}</b><span>${a}</span></div>`).join('');
   knownLayers = state.civ.layers;
@@ -415,7 +415,9 @@ async function selectAgent(id) {
       <span>parents</span><span>${d.parents.filter((p) => p > 0).map((p) => who(p)).join(', ') || 'first generation'}</span>
       <span>partner</span><span>${d.partner > 0 ? who(d.partner, d.partner_name) : '—'}</span><span>children / kills</span><span>${d.children} / ${d.kills}</span>
       <span>energy</span><span>${fmt(d.energy)} / ${fmt(d.capacity)}</span><span>health · water</span><span>${fmt(d.health)} · ${fmt(d.hydration)}</span>
-      <span>infection (hidden)</span><span>${fmt(d.infection)}</span><span>prestige</span><span>${fmt(d.prestige)}</span></div></div>
+      <span>sex</span><span>${d.body.sex}${d.body.pregnant ? ' · pregnant (due in ' + d.body.due_in_hours + ' h)' : ''}</span>
+      <span>inbreeding · kin aversion</span><span>${fmt(d.body.inbreeding)} · ${fmt(d.body.kin_aversion)}</span>
+      <span>infection (hidden)</span><span>${fmt(d.infection)}${d.body.strain_virulence != null ? ' · strain virulence ' + fmt(d.body.strain_virulence) : ''}</span><span>prestige</span><span>${fmt(d.prestige)}</span></div></div>
     <h3>Self-model ${d.self_model.helpless ? '<span class="pill" style="color:#ffb86b">learned helplessness</span>' : ''}</h3>
     <div class="bars">${bar({ 'sense of control': d.self_model.agency })}${bar(Object.fromEntries(Object.entries(d.self_model.efficacy).map(([k, v]) => ['believes in own ' + k, v])))}</div>
     <h3>Emotions (functional model)</h3><div class="bars">${bar(d.emotions)}</div>

@@ -125,6 +125,9 @@ def eat(sim, pc, act, gain_out):
     digest = 1 - diet * (1 - L.DIGEST_EFF_MISMATCH)
     cooked = (pop.skills[eaters, L.SK["fire"]] > 0.2) & (pc.warmth[eaters] > 0.1)
     eff = np.minimum(1.0, L.PLANT_NUTRITION[t] * access * digest * np.where(cooked, 1.25, 1.0))
+    # infants can barely digest solid food: they depend on being nursed
+    from ..intelligence.brain import life_stage
+    eff = eff * np.where(life_stage(pop)[eaters] == 0, 0.3, 1.0)
     want = np.minimum(L.EAT_BITE * (0.5 + size), room / np.maximum(eff, 0.05))
     want = np.minimum(want, reachable)
     # several organisms in one cell share what is there

@@ -184,6 +184,7 @@ class World:
         self.struct = np.zeros((H, W), dtype=np.int8)
         self.struct_hp = np.zeros((H, W), dtype=np.float32)
         self.struct_group = np.full((H, W), -1, dtype=np.int32)
+        self.struct_owner = np.full((H, W), -1, dtype=np.int64)   # id of the builder/heir; -1 = nobody
 
         self.celestial = Celestial(cfg, rng)
         self.ledger = EnergyLedger()
@@ -309,6 +310,7 @@ class World:
             self.struct_hp[hearth] -= 0.03 * (1 + 5 * self.rain[hearth])  # fuel burns out
             gone = built & (self.struct_hp <= 0)
             if gone.any():
+                self.struct_owner[gone] = -1
                 # ruins: built-in minerals become rubble, built-in wood rots
                 self.debris[gone] += self.struct_minerals[gone]
                 self.struct_minerals[gone] = 0

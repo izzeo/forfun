@@ -92,7 +92,31 @@ class Civilization:
         self.feuds[k] = self.feuds.get(k, 0.0) + amt
 
     def on_deaths(self, sim, idx) -> None:
-        pass
+        """Inheritance: what the dead owned passes to the partner, else the eldest living child,
+        else becomes common property of the group."""
+        pop, w = sim.pop, sim.world
+        owners = w.struct_owner
+        if not (owners >= 0).any():
+            return
+        dead_ids = set(int(pop.id[i]) for i in idx)
+        for i in idx:
+            did = int(pop.id[i])
+            cells = owners == did
+            if not cells.any():
+                continue
+            heir = -1
+            partner = int(pop.partner[i])
+            alive = (pop.id == partner) if partner >= 0 else None
+            if partner >= 0 and partner not in dead_ids and alive.any():
+                heir = partner
+            else:
+                kids = np.nonzero(((pop.parent_a == did) | (pop.parent_b == did)) & ~np.isin(pop.id, list(dead_ids)))[0]
+                if len(kids):
+                    heir = int(pop.id[kids[np.argmax(pop.age[kids])]])
+            owners[cells] = heir
+            sim.history.event(sim, "inheritance", did, heir, pop.x[i], pop.y[i], dict(cells=int(cells.sum())))
+            if heir >= 0:
+                sim.analytics.first(sim, "inheritance", "Property passed from the dead to an heir")
 
     def try_trade(self, sim, i: int, j: int) -> bool:
         pop = sim.pop

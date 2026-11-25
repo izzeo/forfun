@@ -20,7 +20,7 @@ from ..civilization.culture import Culture
 from ..civilization.morality import MoralSystem
 from ..civilization.social import Social
 from ..config import WorldConfig
-from ..evolution.evolution import Phylogeny, reproduce
+from ..evolution.evolution import Phylogeny, deliver, reproduce
 from ..intelligence import brain, selfmodel, skills
 from ..intelligence.perception import perceive
 from ..intelligence.psyche import Psyche
@@ -47,6 +47,8 @@ def upgrade_world(w) -> None:
         w.kmask[w.lake] = np.maximum(w.kmask[w.lake], 1.0)
         near = hydrology.distance_to(w.river, 4)
         w.base_moist = np.maximum(w.base_moist, np.clip(0.8 - near / 5.0, 0, 1)).astype(np.float32)
+    if not hasattr(w, "struct_owner"):
+        w.struct_owner = np.full(w.struct.shape, -1, dtype=np.int64)
     if not hasattr(w, "store_food"):
         w.store_food = np.zeros_like(w.biomass)
     if not hasattr(w, "rock"):
@@ -105,7 +107,8 @@ class Simulation:
             n, x=pick[:, 1] + rng.random(n), y=pick[:, 0] + rng.random(n), heading=rng.uniform(0, 2 * np.pi, n),
             energy=0.6 * P.capacity(g), max_age=max_age, age=(rng.uniform(0.15 if cfg.scenario == "advanced" else 0.0, 0.45, n) * max_age).astype(np.int32),
             genome=g, weights=brain.instinct_weights(rng, n), food_value=g[:, GN.FOOD_PREF0:GN.FOOD_PREF0 + L.N_PLANTS],
-            personality=pers, birth_tick=0)
+            personality=pers, birth_tick=0, sex=(rng.random(n) < 0.5).astype(np.int8),
+            kin_aversion=rng.uniform(0.1, 0.5, n).astype(np.float32))
         for a in ids:
             self.pop.names[int(a)] = make_name(int(a))
         self.phylo.found_initial(self)
@@ -250,6 +253,7 @@ class Simulation:
             self.psyche.update(self, pc, reward)
             self._decay_memories()
             births = reproduce(self, pc, act)
+            births += deliver(self)
             if births:
                 cause = np.concatenate([cause, np.full(len(pop) - len(cause), -1, np.int64)])
                 self.consumed = np.concatenate([self.consumed, np.zeros(len(pop) - len(self.consumed), bool)])
@@ -270,11 +274,12 @@ class Simulation:
         pop = self.pop
         cap = P.capacity(pop.genome)
         w = self.world
-        # hungry organisms standing at a storage pit eat from it (no ownership yet: anyone can)
+        # hungry organisms standing at a storage pit eat from it — if it is theirs to take
         if w.store_food.any():
             need = np.nonzero(pop.energy < 0.35 * cap)[0]
             if len(need):
                 cy, cx = w.cell_of(pop.x[need], pop.y[need])
+                id2i = None
                 for k, i in enumerate(need):
                     y0, y1 = max(0, cy[k] - 1), min(w.H, cy[k] + 2)
                     x0, x1 = max(0, cx[k] - 1), min(w.W, cx[k] + 2)
@@ -282,6 +287,10 @@ class Simulation:
                     if win.max() <= 0:
                         continue
                     yy, xx = np.unravel_index(int(win.argmax()), win.shape)
+                    if id2i is None:
+                        id2i = {int(a): q for q, a in enumerate(pop.id)}
+                    if not self._may_take(i, y0 + yy, x0 + xx, id2i, cap):
+                        continue
                     amt = float(min(win[yy, xx], 0.25, cap[i] - pop.energy[i]))
                     win[yy, xx] -= amt
                     pop.energy[i] += amt * 0.95
@@ -301,6 +310,44 @@ class Simulation:
             pop.inventory[spoil, L.R["food"]] -= amt
             cy, cx = self.world.cell_of(pop.x[spoil], pop.y[spoil])
             np.add.at(self.world.detritus, (cy, cx), amt)
+
+    def _may_take(self, i, py, px, id2i, cap) -> bool:
+        """Property: own, family's or own group's store -> take; someone else's -> maybe steal."""
+        pop, w, rng = self.pop, self.world, self.rng
+        owner = int(w.struct_owner[py, px])
+        me = int(pop.id[i])
+        if owner < 0 or owner == me or owner == int(pop.partner[i]):
+            return True
+        o = id2i.get(owner)
+        if o is not None and (int(pop.parent_a[i]) == owner or int(pop.parent_b[i]) == owner
+                              or int(pop.parent_a[o]) == me or int(pop.parent_b[o]) == me):
+            return True
+        if w.struct_group[py, px] >= 0 and w.struct_group[py, px] == pop.group[i]:
+            return True                                   # communal store of one's own group
+        hunger = 1 - float(pop.energy[i]) / float(cap[i])
+        p_steal = hunger * (1 - max(0.0, float(pop.norms[i, 0]))) * (0.4 + float(pop.genome[i, GN.T["aggression"]]))
+        if rng.random() >= p_steal:
+            return False
+        # theft: noticed if the owner is near, or by chance
+        tick = self.clock.tick
+        near = o is not None and np.hypot(pop.x[o] - pop.x[i], pop.y[o] - pop.y[i]) < 5
+        self.stats_counter["thefts"] += 1
+        self.analytics.first(self, "theft", "Food was taken from someone else's store (theft)")
+        if rng.random() < (0.7 if near else 0.15):
+            self.stats_counter["thefts_caught"] += 1
+            pop.prestige[i] -= 0.2
+            MEM.consolidate(pop, np.array([i]), MEM.M["attacked"], -0.6, owner, tick, detail="was caught stealing", force=True)
+            if o is not None:
+                self.social.adjust(owner, me, -0.5)
+                pop.emotion[o, 2] = min(1.0, pop.emotion[o, 2] + 0.5)
+                pop.norms[o, 0] = min(1.0, pop.norms[o, 0] + 0.03)       # being robbed raises regard for justice
+                MEM.consolidate(pop, np.array([o]), MEM.M["attacked"], -0.6, me, tick, detail="was robbed", force=True)
+                go, gi = int(pop.group[o]), int(pop.group[i])
+                if go >= 0 and gi >= 0 and go != gi:
+                    self.civ.add_feud(go, gi, 0.5)
+            self.history.event(self, "theft", me, owner, px, py, dict(caught=True))
+            self.analytics.first(self, "theft_caught", "A thief was caught and lost standing")
+        return True
 
     def _dry_wood(self) -> None:
         """Carried wood dries towards air-dry moisture; rain wets it, a fire dries it fast."""
@@ -366,6 +413,9 @@ class Simulation:
         upgrade_world(self.world)
         self.pop = Population()
         self.pop.load_state(d["pop"])
+        unset = self.pop.sex < 0                 # saves from before sexes existed
+        if unset.any():
+            self.pop.sex[unset] = (np.random.default_rng(int(d["tick"])).random(int(unset.sum())) < 0.5).astype(np.int8)
         self.civ = Civilization(); self.civ.load_state(d["civ"])
         self.phylo = Phylogeny(); self.phylo.__dict__.update(d["phylo"])
         self.analytics = Analytics(); self.analytics.__dict__.update(d["analytics"])
