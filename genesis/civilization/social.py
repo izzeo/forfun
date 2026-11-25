@@ -32,9 +32,9 @@ class Social:
         v = rel.get(b, 0.0) + float(delta)
         v = 1.0 if v > 1.0 else (-1.0 if v < -1.0 else v)
         rel[b] = v
-        if len(rel) > 40:
-            weakest = min(rel, key=lambda k: (abs(rel[k]), k))
-            del rel[weakest]
+        if len(rel) > 48:   # forget the weakest acquaintances (amortised: trim back to 40 at once)
+            for k in sorted(rel, key=lambda k: (abs(rel[k]), k))[: len(rel) - 40]:
+                del rel[k]
         return v
 
     def bond(self, a: int, b: int, v: float) -> None:
@@ -96,6 +96,8 @@ class Social:
         # vectorised: imitation, cultural transmission, moral education by elders
         shared_words = np.ones(len(I), np.float32)
         stats["taught"] = skills.imitate(sim, I, J, shared_words)
+        from ..intelligence import selfmodel
+        selfmodel.vicarious(sim, I, J)
         sim.culture.transmit(sim, I, J)
         juvenile = st[I] <= 2
         sim.moral.ongoing_education(sim, I[juvenile], J[juvenile])
@@ -107,6 +109,7 @@ class Social:
         talker = ((g[:, GN.T["communication"]] > 0.3) & (g[:, GN.T["brain"]] > 0.2)).tolist()
         ritualist = (pop.beliefs[:, 2] >= 0.4).tolist()
         grp = pop.group.tolist()
+        sim._heard = []
         for i, j in zip(I.tolist(), J.tolist()):
             si, sj = ids[i], ids[j]
             aff_ij = self.affinity(si, sj)
@@ -136,6 +139,8 @@ class Social:
                         MEM.consolidate(pop, np.array([j]), MEM.M["received"], 0.6, si, tick,
                                         detail=f"was given food by {pop.names.get(si, 'someone')}")
                         stats["shared"] += 1
+                        sim.support[j] += 1.0
+                        sim.support[i] += 0.5
                         pop.prestige[i] += 0.02
                         sim.analytics.first(sim, "sharing" if kin else "altruism_nonkin",
                                             "Food shared with kin" if kin else "Food shared with a non-relative")
@@ -148,6 +153,8 @@ class Social:
             # ritual
             if ritualist[i] and ritualist[j] and sim.culture.ritual(sim, i, j):
                 stats["rituals"] += 1
+                sim.support[i] += 0.5
+                sim.support[j] += 0.5
             # trade between members of different groups
             gi, gj = grp[i], grp[j]
             if gi >= 0 and gj >= 0 and gi != gj and aff_ij > -0.1:
@@ -159,5 +166,9 @@ class Social:
                 pop.partner[i], pop.partner[j] = sj, si
                 MEM.consolidate(pop, np.array([i, j]), MEM.M["friend"], 0.9, np.array([sj, si]), tick, detail="formed a lasting bond")
                 sim.analytics.first(sim, "pair_bond", "First lasting pair bond formed")
+        if sim._heard:
+            hj = np.array([h[0] for h in sim._heard]); ht = np.array([h[1] for h in sim._heard])
+            MEM.record(pop, hj, MEM.M["heard_word"], 0.2, ht, tick)
+        sim._heard = None
         pop.prestige = (pop.prestige * 0.999 + 0.001 * (pop.skills.sum(axis=1) + 0.5 * (st == 4))).astype(np.float32)
         return stats

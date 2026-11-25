@@ -167,6 +167,8 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
             emotions=dict(zip(["fear", "joy", "anger", "sadness", "affection"], _r(p.emotion[i]))),
             norms=dict(zip(VIRTUES, _r(p.norms[i]))),
             beliefs=dict(zip(["spirits", "naturalism", "ritual"], _r(p.beliefs[i]))),
+            self_model=dict(agency=round(float(p.agency[i]), 3), helpless=bool(p.agency[i] < 0.25),
+                            efficacy=dict(zip(["fight", "forage", "explore", "craft", "social"], _r(p.self_eff[i])))),
             skills={L.SKILLS[k]: round(float(v), 3) for k, v in enumerate(p.skills[i]) if v > 0.01},
             inventory={L.RESOURCES[k]: round(float(v), 2) for k, v in enumerate(p.inventory[i]) if v > 0.01},
             materials=dict(wood_moisture=round(float(p.wood_moist[i]), 3), stone_tool=round(float(p.tool_q[i]), 2),

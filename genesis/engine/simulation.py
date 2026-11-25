@@ -21,7 +21,7 @@ from ..civilization.morality import MoralSystem
 from ..civilization.social import Social
 from ..config import WorldConfig
 from ..evolution.evolution import Phylogeny, reproduce
-from ..intelligence import brain, skills
+from ..intelligence import brain, selfmodel, skills
 from ..intelligence.perception import perceive
 from ..intelligence.psyche import Psyche
 from ..memory import memory as MEM
@@ -78,6 +78,7 @@ class Simulation:
         self.snapshots: list[tuple[int, bytes]] = []
         self.micro: dict[tuple[int, int], MicroRegion] = {}
         self.consumed = np.zeros(0, bool)
+        self.support = np.zeros(0, np.float32)
         self.last_step_ms = 0.0
         self._lex_cache = (-1, None)
         self._genesis()
@@ -214,8 +215,13 @@ class Simulation:
             dmg[:, lifecycle.C["poisoning"]] += toxin
             actions.drink(self, pc, act)
             attacks = actions.attack(self, pc, act, gain, dmg)
+            r0 = reward.copy()
             skills.experiment(self, pc, act, reward)
+            r_exp = reward - r0
+            r0 = reward.copy()
             skills.work(self, pc, act, reward)
+            r_work = reward - r0
+            self.support = np.zeros(n, np.float32)
             self._eat_stores()
             self._dry_wood()
             st = self.social.interact(pc, act, attacks)
@@ -238,6 +244,9 @@ class Simulation:
             dh = pop.health - h0
             reward += (de / P.capacity(pop.genome)) * 4 + dh * 3
             brain.learn_habits(self, act, reward)
+            # uncontrollable harm: disease, storms, exposure, being beaten
+            harm = dmg[:, [lifecycle.C[c] for c in ("disease", "storm", "exposure", "predation", "violence", "fire")]].sum(axis=1)
+            selfmodel.update(self, act, attacks, gain, r_exp, r_work, harm, self.support)
             self.psyche.update(self, pc, reward)
             self._decay_memories()
             births = reproduce(self, pc, act)
@@ -367,6 +376,7 @@ class Simulation:
         self.moral = MoralSystem(self.cfg.moral_framework, self.cfg.moral_education)
         self.social = Social(self)
         self.micro = {}
+        self.support = np.zeros(len(self.pop), np.float32)
         self._lex_cache = (-1, None)
 
     def take_snapshot(self) -> None:

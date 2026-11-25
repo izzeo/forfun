@@ -71,6 +71,10 @@ FIELDS = {
     "glass_q": (np.float32, (), 0.0),          # clarity of the glass (sand purity)
     "sand_q": (np.float32, (), 0.85),          # purity of carried sand
     "stone_rock": (np.int8, (), 0),            # rock type of carried stone
+    # self-model (see intelligence.selfmodel)
+    "self_eff": (np.float32, (5,), 0.5),       # belief in own success: fight, forage, explore, craft, social
+    "agency": (np.float32, (), 0.6),           # general sense of control (low = learned helplessness)
+    "was_helpless": (np.bool_, (), False),
 }
 
 EMO = {"fear": 0, "joy": 1, "anger": 2, "sadness": 3, "affection": 4}

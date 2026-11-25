@@ -106,8 +106,13 @@ def converse(sim, pc, i: int, j: int) -> bool:
         elif topic == C_WATER:
             pop.water_mem[j] = (pop.x[i], pop.y[i], 1.0)
     if success:
-        MEM.record(pop, np.array([j]), MEM.M["heard_word"], 0.2, topic, tick)
-        sim.analytics.first(sim, "communication", f"First successful exchange of a word ('{word}' for {CONCEPTS[topic]})")
+        heard = getattr(sim, "_heard", None)
+        if heard is not None:
+            heard.append((j, topic))           # written to memory in one batch by the caller
+        else:
+            MEM.record(pop, np.array([j]), MEM.M["heard_word"], 0.2, topic, tick)
+        if "communication" not in sim.analytics.firsts:
+            sim.analytics.first(sim, "communication", f"First successful exchange of a word ('{word}' for {CONCEPTS[topic]})")
     return success
 
 

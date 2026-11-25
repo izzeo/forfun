@@ -100,6 +100,9 @@ def choose(sim, pc) -> np.ndarray:
     logits[:, A["rest"]] += 1.0 * emo[:, 3]
     logits[:, A["social"]] += 0.5 * emo[:, 3] + 0.8 * emo[:, 4] + 0.3 * emo[:, 1]
     logits[:, A["work"]] += 0.6 * pop.norms[:, 3]  # responsibility
+    # beliefs about oneself: what one dares to attempt
+    from . import selfmodel
+    selfmodel.bias(pop, logits)
     # behavioural persistence: keep doing what one was doing until the goal is met
     last = pop.last_action.astype(np.int64)
     done = ((last == A["drink"]) & (pop.hydration > 0.9)) | ((last == A["eat"]) & (pc.inputs[:, 1] < 0.1)) \

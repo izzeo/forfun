@@ -124,6 +124,8 @@ def make_offspring(sim, pa: np.ndarray, pb: np.ndarray) -> np.ndarray:
         food_value=fv, personality=pers, norms=np.clip(norms, -1, 1), beliefs=beliefs,
         immunity=0.5 * (pop.immunity[pa] + pop.immunity[pbb]) * 0.3,
         hue_fear=0.3 * pop.hue_fear[pa],  # weak innate-like transmission via early exposure
+        # upbringing: confident parents raise somewhat more confident young, and vice versa
+        agency=np.clip(0.6 + 0.3 * ((pop.agency[pa] + pop.agency[pbb]) / 2 - 0.6), 0, 1),
     )
     sim.moral.educate_newborn(sim, ids, pa)
     n0 = len(pop) - m

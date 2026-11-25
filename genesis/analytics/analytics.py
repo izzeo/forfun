@@ -54,6 +54,11 @@ class Analytics:
             talkers = [int(a) for a in pop.id if int(a) in pop.lexicon]
             coh, _ = language.coherence(pop, talkers[:600])
             row["language_coherence"] = round(coh, 3)
+            from ..intelligence import selfmodel
+            row["self_model"] = dict(mean_agency=round(float(pop.agency.mean()), 3),
+                                     helpless_share=round(float((pop.agency < selfmodel.HELPLESS).mean()), 4),
+                                     efficacy={d: round(float(pop.self_eff[:, k].mean()), 3) for k, d in enumerate(selfmodel.DOMAINS)},
+                                     **selfmodel.calibration(pop, sim))
             row["speakers"] = len(talkers)
         row.update(sim.civ.summary())
         row["social"] = dict(sim.social_stats)
