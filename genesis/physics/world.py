@@ -52,9 +52,10 @@ class EnergyLedger:
     def __init__(self):
         self.solar_in = 0.0
         self.heat_out = 0.0
+        self.creator_in = 0.0     # energy added by the creator (interventions), booked separately
 
     def to_dict(self):
-        return dict(solar_in=self.solar_in, heat_out=self.heat_out)
+        return dict(solar_in=self.solar_in, heat_out=self.heat_out, creator_in=getattr(self, "creator_in", 0.0))
 
 
 class Celestial:
@@ -268,7 +269,8 @@ class World:
         from . import chemistry as CH
         self.co2 = CH.co2_ratio(self.ledger.solar_in, self.ledger.heat_out)
         self.greenhouse = CH.greenhouse_offset(self.co2)
-        self.temperature = (self.base_temp + seasonal + diurnal + self.temp_offset + self.greenhouse).astype(np.float32)
+        self.temperature = (self.base_temp + seasonal + diurnal + self.temp_offset + self.greenhouse
+                            + getattr(self, "creator_temp", 0.0)).astype(np.float32)
         self.temperature[self.fire > 0.1] += 15.0 * self.fire[self.fire > 0.1]
 
         # ---- flora (LOD) ----------------------------------------------------

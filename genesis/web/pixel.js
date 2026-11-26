@@ -486,7 +486,8 @@ export class PixelView {
       const r = this.el.getBoundingClientRect();
       if (drag && !drag.moved) {
         const p = this.pick(e.clientX - r.left, e.clientY - r.top);
-        if (this.opts.isMicro && this.opts.isMicro()) this.opts.onMicro(p.cell[0], p.cell[1]);
+        if (this.opts.creatorTool && this.opts.creatorTool()) this.opts.onCreate(p.cell[0] + 0.5, p.cell[1] + 0.5);
+        else if (this.opts.isMicro && this.opts.isMicro()) this.opts.onMicro(p.cell[0], p.cell[1]);
         else if (p.id != null) this.opts.onSelect(p.id);
       }
       drag = null;

@@ -81,6 +81,7 @@ class Simulation:
         self.micro: dict[tuple[int, int], MicroRegion] = {}
         self.consumed = np.zeros(0, bool)
         self.support = np.zeros(0, np.float32)
+        self.interventions: list[dict] = []
         self.last_step_ms = 0.0
         self._lex_cache = (-1, None)
         self._genesis()
@@ -396,7 +397,8 @@ class Simulation:
                     rng=self.rng.bit_generator.state, world=self.world.__dict__, pop=self.pop.state_dict(),
                     civ=self.civ.state_dict(), phylo=self.phylo.__dict__, analytics=self.analytics.__dict__,
                     scheduler=self.scheduler.__dict__, stats_counter=self.stats_counter,
-                    social_stats=self.social_stats, initial_energy=self.initial_energy)
+                    social_stats=self.social_stats, initial_energy=self.initial_energy,
+                    interventions=self.interventions)
 
     def snapshot_bytes(self) -> bytes:
         return zlib.compress(pickle.dumps(self.state_dict(), protocol=pickle.HIGHEST_PROTOCOL), 3)
@@ -423,6 +425,7 @@ class Simulation:
         self.stats_counter = d["stats_counter"]
         self.social_stats = d["social_stats"]
         self.initial_energy = d["initial_energy"]
+        self.interventions = d.get("interventions", [])
         self.moral = MoralSystem(self.cfg.moral_framework, self.cfg.moral_education)
         self.social = Social(self)
         self.micro = {}

@@ -33,6 +33,20 @@ def _r(a, k=3):
     return np.round(np.asarray(a, dtype=np.float64), k).tolist()
 
 
+class CreatorAct(BaseModel):
+    action: str                       # law | event | spawn | act | place
+    name: str | None = None
+    value: float | None = None
+    x: float | None = None
+    y: float | None = None
+    radius: float | None = 6
+    n: int | None = 10
+    kind: str | None = None
+    agent: int | None = None
+    skill: str | None = None
+    material: str | None = None
+
+
 class Control(BaseModel):
     action: str
     value: str | float | int | None = None
@@ -255,6 +269,38 @@ def create_app(sim: Simulation | None = None, cfg: WorldConfig | None = None, au
     def morality():
         return dict(frameworks={k: dict(description=v["description"], ideal=v["ideal"]) for k, v in FRAMEWORKS.items()},
                     virtues=VIRTUES, current=S().moral.framework, strength=S().moral.strength)
+
+    @app.get("/api/creator")
+    def creator_info():
+        from ..engine import creator as CR
+        s = S()
+        laws = {k: getattr(s.cfg, attr) for k, (attr, lo, hi) in CR.LAWS.items()}
+        laws["temperature"] = float(getattr(s.world, "creator_temp", 0.0))
+        return dict(laws=laws, ranges={k: [lo, hi] for k, (attr, lo, hi) in CR.LAWS.items()} | {"temperature": [-20, 20]},
+                    events=CR.EVENTS, skills=L.SKILLS, materials=["stone", "clay", "sand", "ore", "copper", "salt"],
+                    interventions=s.interventions[-100:], count=len(s.interventions),
+                    creator_energy=round(float(getattr(s.world.ledger, "creator_in", 0.0)), 2),
+                    creator_minerals=round(float(getattr(s.world, "creator_minerals", 0.0)), 2))
+
+    @app.post("/api/creator")
+    def creator_act(c: CreatorAct):
+        from ..engine import creator as CR
+        s, r = S(), R()
+        try:
+            with r.lock:
+                if c.action == "law":
+                    return CR.set_law(s, c.name, float(c.value))
+                if c.action == "event":
+                    return CR.event(s, c.kind, c.x, c.y, c.radius or 6)
+                if c.action == "spawn":
+                    return CR.spawn(s, c.x, c.y, c.n or 10, c.kind or "advanced", c.agent)
+                if c.action == "act":
+                    return CR.act_on(s, int(c.agent), c.kind, c.skill)
+                if c.action == "place":
+                    return CR.place(s, c.x, c.y, c.material, c.value or 3)
+        except (CR.CreatorError, TypeError) as e:
+            raise HTTPException(400, str(e))
+        raise HTTPException(400, "unknown creator action")
 
     @app.post("/api/control")
     def control(c: Control):

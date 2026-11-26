@@ -64,6 +64,7 @@
       <button data-tab="evolution">Evolution</button>
       <button data-tab="civ">Civilization</button>
       <button data-tab="history">History</button>
+      <button data-tab="creator">Creator</button>
     </nav>
     <section id="tab-overview" class="tab active">
       <div class="kpis" id="kpis"></div>
@@ -98,6 +99,44 @@
       <h3>Norms (population mean)</h3><div id="norms" class="bars"></div>
       <h3>Beliefs</h3><div id="beliefs" class="bars"></div>
     </section>
+    <section id="tab-creator" class="tab">
+      <p class="small muted">You can intervene in the world. Every act is written into its history as an act of the
+        creator, and the energy or matter you add is booked separately, so the laws still balance.
+        Inhabitants who witness a sign without a visible cause may start to believe in unseen powers.</p>
+      <h3>Act on the land (choose, then click the map)</h3>
+      <div class="form">
+        <select id="cr-tool">
+          <option value="">— nothing (normal clicks) —</option>
+          <optgroup label="Events">
+            <option value="event:rain">Rain</option><option value="event:drought">Drought</option>
+            <option value="event:storm">Storm</option><option value="event:wildfire">Fire from the sky</option>
+            <option value="event:plague">Plague</option><option value="event:abundance">Abundance (plants grow)</option>
+          </optgroup>
+          <optgroup label="Life">
+            <option value="spawn:primordial">Create simple organisms</option>
+            <option value="spawn:advanced">Create thinking creatures</option>
+            <option value="spawn:copy">Create copies of the selected organism</option>
+          </optgroup>
+          <optgroup label="Matter">
+            <option value="place:stone">Place stone</option><option value="place:clay">Place clay</option>
+            <option value="place:ore">Place iron ore</option><option value="place:copper">Place copper ore</option>
+            <option value="place:salt">Place salt</option><option value="place:sand">Place sand</option>
+          </optgroup>
+        </select>
+        <label>Radius <input id="cr-radius" type="number" value="6" min="1" max="30"></label>
+        <label>How many creatures <input id="cr-n" type="number" value="10" min="1" max="200"></label>
+      </div>
+      <h3>Laws of the world</h3>
+      <div class="form" id="cr-laws"></div>
+      <div class="form row" style="margin-top:6px"><button id="cr-cold">Colder world (−5 °C)</button><button id="cr-warm">Warmer (+5 °C)</button><button id="cr-eclipse">Eclipse</button></div>
+      <h3>The selected organism</h3>
+      <div id="cr-who" class="small muted">Select an organism on the map first.</div>
+      <div class="form row"><button id="cr-heal">Heal</button><button id="cr-smite">Take its life</button></div>
+      <div class="form row"><select id="cr-skill"></select><button id="cr-reveal">Reveal this knowledge</button></div>
+      <h3>Interventions <span id="cr-count" class="pill">0</span></h3>
+      <div class="small muted" id="cr-ledger"></div>
+      <ol id="cr-log" class="timeline"></ol>
+    </section>
     <section id="tab-history" class="tab">
       <h3>Rewind</h3>
       <div class="form row"><input id="rw-range" type="range" min="0" max="0" value="0"><span id="rw-label"></span><button id="rw-go">Rewind</button></div>
@@ -107,6 +146,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="/static/app.js?v=8"></script>
+<script type="module" src="/static/app.js?v=9"></script>
 </body>
 </html>

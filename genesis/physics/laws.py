@@ -94,7 +94,7 @@ N_ACTIONS = len(ACTIONS)
 # Causes of death — every disappearance must have one of these.
 # --------------------------------------------------------------------------
 DEATH_CAUSES = ["starvation", "old_age", "predation", "disease", "poisoning",
-                "exposure", "drowning", "dehydration", "violence", "storm", "fire"]
+                "exposure", "drowning", "dehydration", "violence", "storm", "fire", "act_of_creator"]
 
 # --------------------------------------------------------------------------
 # Structures built on the grid

@@ -195,6 +195,8 @@ const pv = new PixelView(document.querySelector('#pixel'), {
   onSelect: (id) => selectAgent(id),
   onMicro: (x, y) => openMicro(x, y),
   isMicro: () => document.querySelector('#micro-mode').checked,
+  creatorTool: () => !!document.querySelector('#cr-tool').value,
+  onCreate: (x, y) => creatorAt(x, y),
   onFollowChange: (v) => { document.querySelector('#follow').checked = v; },
   onHover: (a, x, y) => {
     const tip = document.querySelector('#tooltip');
@@ -234,6 +236,11 @@ canvas.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY];
 canvas.addEventListener('pointerup', (e) => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
   const rc = pick(e);
+  if ($('#cr-tool').value) {
+    const hit = rc.intersectObject(terrain)[0];
+    if (hit) creatorAt(hit.point.x + W / 2, hit.point.z + H / 2);
+    return;
+  }
   if ($('#micro-mode').checked) {
     const hit = rc.intersectObject(terrain)[0];
     if (hit) openMicro(Math.floor(hit.point.x + W / 2), Math.floor(hit.point.z + H / 2));
@@ -394,10 +401,12 @@ function tree(n) {
 async function selectAgent(id) {
   selected = id;
   pv.selected = id;
-  document.querySelector('[data-tab="organism"]').click();
+  const inCreator = document.querySelector('#tabs button.active')?.dataset.tab === 'creator';
+  if (!inCreator) document.querySelector('[data-tab="organism"]').click();
   const [d, lin] = await Promise.all([api('/api/agent/' + id), api(`/api/agent/${id}/lineage`)]);
   $('#org-empty').style.display = 'none';
   pv.selectedName = d.name;
+  if (inCreator) refreshCreator();
   if (d.detail) { $('#org').innerHTML = `<p class="muted">${d.detail}</p>`; return; }
   const bio = (d.biography || []).map((e) => `<li><span class="t">t=${e.tick}</span>${e.kind.replace(/_/g, ' ')} ${e.other > 0 && e.other !== id ? who(e.other) : ''} <span class="muted small">${JSON.stringify(e.data).slice(0, 70)}</span></li>`).join('');
   if (!d.alive) {
@@ -473,6 +482,7 @@ document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('cli
   document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
   if (b.dataset.tab === 'civ' || b.dataset.tab === 'evolution' || b.dataset.tab === 'history') refreshCiv();
+  if (b.dataset.tab === 'creator') refreshCreator();
 }));
 $('#rw-range').oninput = (e) => { e.target.dataset.touched = 1; $('#rw-label').textContent = 'tick ' + e.target.value; };
 $('#rw-go').onclick = async () => {
@@ -487,6 +497,45 @@ $('#nw-go').onclick = async () => {
   await post({ action: 'new', seed: +$('#nw-seed').value, scenario: $('#nw-scn').value, framework: $('#nw-fw').value });
   await init();
 };
+
+// ---------------------------------------------------------------- creator mode
+const creatorPost = async (body) => {
+  const r = await fetch('/api/creator', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) alert(j.detail || 'not possible');
+  refreshCreator();
+  return j;
+};
+async function creatorAt(x, y) {
+  const [kind, what] = $('#cr-tool').value.split(':');
+  const radius = +$('#cr-radius').value, n = +$('#cr-n').value;
+  if (kind === 'event') return creatorPost({ action: 'event', kind: what, x, y, radius });
+  if (kind === 'spawn') return creatorPost({ action: 'spawn', x, y, n, kind: what === 'copy' ? 'advanced' : what, agent: what === 'copy' ? selected : null });
+  if (kind === 'place') return creatorPost({ action: 'place', x, y, material: what, value: 5 });
+}
+async function refreshCreator() {
+  const c = await api('/api/creator');
+  $('#cr-count').textContent = c.count;
+  $('#cr-ledger').textContent = `Energy added from outside: ${c.creator_energy} · matter added: ${c.creator_minerals}`;
+  if (!$('#cr-laws').dataset.built) {
+    $('#cr-laws').innerHTML = Object.entries(c.ranges).map(([k, [lo, hi]]) =>
+      `<label>${k.replace('_', ' ')} <input type="range" data-law="${k}" min="${lo}" max="${hi}" step="${(hi - lo) / 100}" value="${c.laws[k]}"><span class="val" id="law-${k}">${fmt(c.laws[k], 3)}</span></label>`).join('');
+    $('#cr-laws').querySelectorAll('input').forEach((el) => el.addEventListener('change', () =>
+      creatorPost({ action: 'law', name: el.dataset.law, value: +el.value })));
+    $('#cr-laws').querySelectorAll('input').forEach((el) => el.addEventListener('input', () => { $('#law-' + el.dataset.law).textContent = fmt(+el.value, 3); }));
+    $('#cr-skill').innerHTML = c.skills.map((s) => `<option>${s}</option>`).join('');
+    $('#cr-laws').dataset.built = 1;
+  }
+  $('#cr-who').innerHTML = selected ? `Selected: ${who(selected, pv.selectedName)}` : 'Select an organism on the map first.';
+  $('#cr-log').innerHTML = c.interventions.slice().reverse().map((e) =>
+    `<li><span class="t">t=${e.tick}</span>${e.kind}${e.law ? ' ' + e.law + ' = ' + fmt(e.value, 3) : ''}${e.material ? ' ' + e.material : ''}${e.n ? ' ×' + e.n : ''}${e.agent ? ' ' + who(e.agent) : ''}${e.skill ? ': ' + e.skill : ''}</li>`).join('');
+}
+$('#cr-cold').onclick = () => creatorPost({ action: 'event', kind: 'cold', x: 0, y: 0 });
+$('#cr-warm').onclick = () => creatorPost({ action: 'event', kind: 'warm', x: 0, y: 0 });
+$('#cr-eclipse').onclick = () => creatorPost({ action: 'event', kind: 'eclipse', x: 0, y: 0 });
+$('#cr-heal').onclick = () => selected && creatorPost({ action: 'act', agent: selected, kind: 'heal' });
+$('#cr-smite').onclick = () => selected && confirm('Take the life of this organism?') && creatorPost({ action: 'act', agent: selected, kind: 'smite' });
+$('#cr-reveal').onclick = () => selected && creatorPost({ action: 'act', agent: selected, kind: 'reveal', skill: $('#cr-skill').value });
 
 async function init() {
   meta = world = await api('/api/world');

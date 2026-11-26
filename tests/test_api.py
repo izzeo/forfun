@@ -44,3 +44,25 @@ def test_controls_and_stream(tmp_path):
     with c.websocket_connect("/ws") as ws:
         f = ws.receive_json()
         assert f["type"] == "frame" and "fields" in f and len(f["agents"]) == f["population"]
+
+
+def test_creator_mode_is_recorded_and_booked():
+    c, sim = _client()
+    c.post("/api/control", json={"action": "step", "value": 5})
+    x, y = float(sim.pop.x[0]), float(sim.pop.y[0])
+    r = c.post("/api/creator", json={"action": "event", "kind": "abundance", "x": x, "y": y, "radius": 4}).json()
+    assert r["energy_added"] >= 0
+    n0 = len(sim.pop)
+    c.post("/api/creator", json={"action": "spawn", "x": x, "y": y, "n": 3, "kind": "advanced"})
+    assert len(sim.pop) == n0 + 3
+    aid = int(sim.pop.id[0])
+    assert c.post("/api/creator", json={"action": "act", "agent": aid, "kind": "reveal", "skill": "fire"}).status_code == 200
+    assert c.post("/api/creator", json={"action": "law", "name": "plant_growth", "value": 0.2}).json()["value"] == 0.2
+    assert c.post("/api/creator", json={"action": "event", "kind": "nonsense", "x": 1, "y": 1}).status_code == 400
+    info = c.get("/api/creator").json()
+    assert info["count"] == 4 and info["creator_energy"] > 0
+    assert any(e["kind"] == "intervention" for e in sim.history.events(["intervention"]))
+    # energy balance still closes when the creator's contributions are counted
+    e = sim.total_energy()
+    L = sim.world.ledger
+    assert abs(e - (sim.initial_energy + L.solar_in - L.heat_out + L.creator_in)) / sim.initial_energy < 1e-3
